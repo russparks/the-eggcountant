@@ -5,7 +5,7 @@ $user = require_auth();
 $collection = $_GET['collection'] ?? '';
 $id = $_GET['id'] ?? null;
 
-if (!in_array($collection, COLLECTIONS, true)) {
+if (!in_array($collection, DB_COLLECTIONS, true)) {
     respond(['error' => 'Invalid collection'], 400);
 }
 
@@ -20,12 +20,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         respond(['error' => 'Record not found'], 404);
     }
 
-    usort($items, function ($a, $b) {
-        $aDate = $a['date'] ?? $a['dateStarted'] ?? '';
-        $bDate = $b['date'] ?? $b['dateStarted'] ?? '';
-        return strcmp($bDate, $aDate);
-    });
-    respond(['items' => $items]);
+    respond(['items' => sorted_records($items)]);
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -35,7 +30,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         respond(['error' => 'Item with id is required'], 422);
     }
 
-    $items = collection_data($user['id'], $collection);
+    if (use_database()) {
+        try {
+            db_upsert_collection_item($user['id'], $collection, $item);
+            respond(['item' => $item]);
+        } catch (Throwable $exception) {
+            if (!app_config('legacy_json_fallback', true)) {
+                fail('Failed to save record', 500, $exception);
+            }
+        }
+    }
+
+    $items = legacy_collection_data($user['id'], $collection);
     $replaced = false;
     foreach ($items as $index => $existing) {
         if (($existing['id'] ?? null) === $item['id']) {
@@ -47,8 +53,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!$replaced) {
         $items[] = $item;
     }
+    legacy_save_collection_data($user['id'], $collection, $items);
 
-    save_collection_data($user['id'], $collection, $items);
     respond(['item' => $item]);
 }
 
@@ -57,9 +63,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'DELETE') {
         respond(['error' => 'id is required'], 422);
     }
 
-    $items = collection_data($user['id'], $collection);
-    $filtered = array_values(array_filter($items, fn($item) => ($item['id'] ?? null) !== $id));
-    save_collection_data($user['id'], $collection, $filtered);
+    remove_collection_item($user['id'], $collection, $id);
     respond(['ok' => true]);
 }
 

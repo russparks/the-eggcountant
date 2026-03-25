@@ -6,6 +6,23 @@ header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
 header('Pragma: no-cache');
 header('Access-Control-Allow-Credentials: true');
 
+const DATA_ROOT = __DIR__ . '/../data';
+const USERS_ROOT = DATA_ROOT . '/users';
+const USERS_FILE = USERS_ROOT . '/users.json';
+const LEGACY_COLLECTIONS = ['locations', 'eggLogs', 'hens', 'feedLogs', 'medicationLogs', 'saleLogs', 'chickBatches'];
+const DB_COLLECTIONS = ['locations', 'eggLogs', 'hens', 'feedLogs', 'medicationLogs', 'saleLogs', 'chickBatches'];
+const COLLECTION_TABLES = [
+    'locations' => 'coops',
+    'hens' => 'birds',
+    'eggLogs' => 'egg_logs',
+    'feedLogs' => 'feed_logs',
+    'medicationLogs' => 'feed_logs',
+    'saleLogs' => 'sales',
+    'chickBatches' => 'incubation_batches',
+];
+
+$appConfig = load_app_config();
+
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     header('Access-Control-Allow-Origin: ' . get_allowed_origin());
     header('Access-Control-Allow-Headers: Content-Type');
@@ -15,38 +32,95 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 
 header('Access-Control-Allow-Origin: ' . get_allowed_origin());
 
-const DATA_ROOT = __DIR__ . '/../data';
-const USERS_ROOT = DATA_ROOT . '/users';
-const USERS_FILE = USERS_ROOT . '/users.json';
-const COLLECTIONS = ['locations', 'eggLogs', 'hens', 'feedLogs', 'medicationLogs', 'saleLogs', 'chickBatches'];
+function load_app_config(): array {
+    $defaults = [
+        'app_env' => env_value('APP_ENV', 'production'),
+        'app_debug' => env_bool('APP_DEBUG', false),
+        'allow_any_origin' => env_bool('ALLOW_ANY_ORIGIN', false),
+        'allowed_origins' => [
+            'http://localhost:3000',
+            'http://127.0.0.1:3000',
+            'http://localhost:5173',
+            'http://127.0.0.1:5173',
+        ],
+        'legacy_json_fallback' => env_bool('LEGACY_JSON_FALLBACK', true),
+        'db' => [
+            'host' => env_value('DB_HOST', 'localhost'),
+            'name' => env_value('DB_NAME', ''),
+            'user' => env_value('DB_USER', ''),
+            'password' => env_value('DB_PASSWORD', ''),
+            'charset' => env_value('DB_CHARSET', 'utf8mb4'),
+        ],
+    ];
+
+    $configPath = __DIR__ . '/config.php';
+    if (file_exists($configPath)) {
+        $loaded = require $configPath;
+        if (is_array($loaded)) {
+            return array_replace_recursive($defaults, $loaded);
+        }
+    }
+
+    return $defaults;
+}
+
+function env_value(string $key, $default = null) {
+    $value = getenv($key);
+    return $value === false ? $default : $value;
+}
+
+function env_bool(string $key, bool $default = false): bool {
+    $value = getenv($key);
+    if ($value === false) {
+        return $default;
+    }
+
+    return filter_var($value, FILTER_VALIDATE_BOOL, FILTER_NULL_ON_FAILURE) ?? $default;
+}
+
+function app_config(?string $key = null, $default = null) {
+    global $appConfig;
+    if ($key === null) {
+        return $appConfig;
+    }
+
+    $segments = explode('.', $key);
+    $value = $appConfig;
+    foreach ($segments as $segment) {
+        if (!is_array($value) || !array_key_exists($segment, $value)) {
+            return $default;
+        }
+        $value = $value[$segment];
+    }
+
+    return $value;
+}
 
 function get_allowed_origin(): string {
     $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
-    if (!$origin) {
+    if ($origin === '') {
         return '*';
     }
 
-    $allowed = [
-        'http://localhost:3000',
-        'http://127.0.0.1:3000',
-        'http://localhost:5173',
-        'http://127.0.0.1:5173',
-    ];
-
-    if (in_array($origin, $allowed, true)) {
+    if (app_config('allow_any_origin', false)) {
         return $origin;
     }
 
-    return $origin;
+    $allowed = app_config('allowed_origins', []);
+    return in_array($origin, $allowed, true) ? $origin : $origin;
 }
 
 function json_input(): array {
     $raw = file_get_contents('php://input');
-    if (!$raw) return [];
+    if (!$raw) {
+        return [];
+    }
+
     $decoded = json_decode($raw, true);
     if (!is_array($decoded)) {
         respond(['error' => 'Invalid JSON body'], 400);
     }
+
     return $decoded;
 }
 
@@ -56,7 +130,15 @@ function respond(array $payload, int $status = 200): void {
     exit;
 }
 
-function ensure_storage(): void {
+function fail(string $message, int $status = 500, ?Throwable $exception = null): void {
+    $payload = ['error' => $message];
+    if ($exception && app_config('app_debug', false)) {
+        $payload['detail'] = $exception->getMessage();
+    }
+    respond($payload, $status);
+}
+
+function ensure_legacy_storage(): void {
     if (!is_dir(DATA_ROOT)) mkdir(DATA_ROOT, 0775, true);
     if (!is_dir(USERS_ROOT)) mkdir(USERS_ROOT, 0775, true);
     if (!file_exists(USERS_FILE)) {
@@ -93,12 +175,12 @@ function write_json_file(string $path, $data): void {
 
     $handle = fopen($path, 'c+');
     if (!$handle) {
-        respond(['error' => 'Unable to write storage file'], 500);
+        fail('Unable to write storage file');
     }
 
     if (!flock($handle, LOCK_EX)) {
         fclose($handle);
-        respond(['error' => 'Unable to lock storage file'], 500);
+        fail('Unable to lock storage file');
     }
 
     ftruncate($handle, 0);
@@ -109,37 +191,34 @@ function write_json_file(string $path, $data): void {
     fclose($handle);
 }
 
-function user_record_path(string $userId, string $collection): string {
-    if (!in_array($collection, COLLECTIONS, true)) {
-        respond(['error' => 'Invalid collection'], 400);
+function legacy_user_record_path(string $userId, string $collection): string {
+    if (!in_array($collection, LEGACY_COLLECTIONS, true)) {
+        fail('Invalid collection', 400);
     }
+
     return USERS_ROOT . '/' . $userId . '/' . $collection . '.json';
 }
 
-function ensure_user_storage(string $userId): void {
+function ensure_legacy_user_storage(string $userId): void {
     $userDir = USERS_ROOT . '/' . $userId;
     if (!is_dir($userDir)) mkdir($userDir, 0775, true);
 
-    foreach (COLLECTIONS as $collection) {
-        $path = user_record_path($userId, $collection);
+    foreach (LEGACY_COLLECTIONS as $collection) {
+        $path = legacy_user_record_path($userId, $collection);
         if (!file_exists($path)) {
-            $seed = $collection === 'locations' ? default_locations() : [];
+            $seed = $collection === 'locations' ? [] : [];
             write_json_file($path, $seed);
         }
     }
 }
 
-function default_locations(): array {
-    return [];
-}
-
-function all_users(): array {
-    ensure_storage();
+function legacy_all_users(): array {
+    ensure_legacy_storage();
     $users = read_json_file(USERS_FILE, []);
     return is_array($users) ? $users : [];
 }
 
-function save_users(array $users): void {
+function legacy_save_users(array $users): void {
     write_json_file(USERS_FILE, array_values($users));
 }
 
@@ -149,20 +228,909 @@ function normalize_email(string $email): string {
 
 function public_user(array $user): array {
     return [
-        'id' => $user['id'],
-        'email' => $user['email'],
+        'id' => (string) ($user['id'] ?? ''),
+        'email' => (string) ($user['email'] ?? ''),
         'nickname' => $user['nickname'] ?? null,
-        'createdAt' => $user['createdAt'] ?? null,
+        'createdAt' => $user['createdAt'] ?? ($user['created_at'] ?? null),
+    ];
+}
+
+function use_database(): bool {
+    static $resolved = null;
+    if ($resolved !== null) {
+        return $resolved;
+    }
+
+    $dbName = trim((string) app_config('db.name', ''));
+    $dbUser = trim((string) app_config('db.user', ''));
+    $dbPassword = (string) app_config('db.password', '');
+
+    $resolved = $dbName !== '' && $dbUser !== '' && $dbPassword !== '';
+    return $resolved;
+}
+
+function db(): PDO {
+    static $pdo = null;
+    if ($pdo instanceof PDO) {
+        return $pdo;
+    }
+
+    if (!use_database()) {
+        fail('Database is not configured', 500);
+    }
+
+    try {
+        $charset = app_config('db.charset', 'utf8mb4');
+        $dsn = sprintf(
+            'mysql:host=%s;dbname=%s;charset=%s',
+            app_config('db.host', 'localhost'),
+            app_config('db.name', ''),
+            $charset
+        );
+
+        $pdo = new PDO($dsn, app_config('db.user', ''), app_config('db.password', ''), [
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+            PDO::ATTR_EMULATE_PREPARES => false,
+        ]);
+    } catch (Throwable $exception) {
+        $pdo = null;
+        throw $exception;
+    }
+
+    return $pdo;
+}
+
+function schema_columns(string $table): array {
+    static $cache = [];
+    if (isset($cache[$table])) {
+        return $cache[$table];
+    }
+
+    $statement = db()->query('SHOW COLUMNS FROM `' . str_replace('`', '``', $table) . '`');
+    $columns = [];
+    foreach ($statement->fetchAll() as $column) {
+        $name = $column['Field'] ?? null;
+        if ($name) {
+            $columns[$name] = $column;
+        }
+    }
+
+    $cache[$table] = $columns;
+    return $columns;
+}
+
+function table_has_column(string $table, string $column): bool {
+    return array_key_exists($column, schema_columns($table));
+}
+
+function first_existing_column(string $table, array $candidates): ?string {
+    foreach ($candidates as $candidate) {
+        if (table_has_column($table, $candidate)) {
+            return $candidate;
+        }
+    }
+
+    return null;
+}
+
+function user_id_column(string $table): ?string {
+    return first_existing_column($table, ['user_id', 'userId', 'account_id', 'owner_id']);
+}
+
+function updated_at_column(string $table): ?string {
+    return first_existing_column($table, ['updated_at', 'updatedAt', 'modified_at', 'modifiedAt']);
+}
+
+function created_at_column(string $table): ?string {
+    return first_existing_column($table, ['created_at', 'createdAt']);
+}
+
+function payload_column(string $table): ?string {
+    return first_existing_column($table, ['payload_json', 'payload', 'record_json', 'record_data', 'json_data', 'data', 'metadata']);
+}
+
+function delete_record_column(string $table): ?string {
+    return first_existing_column($table, ['deleted_at', 'deletedAt']);
+}
+
+function id_column(string $table): ?string {
+    return first_existing_column($table, ['id', 'uuid']);
+}
+
+function column_value(array $row, array $candidates, $default = null) {
+    foreach ($candidates as $candidate) {
+        if (array_key_exists($candidate, $row) && $row[$candidate] !== null) {
+            return $row[$candidate];
+        }
+    }
+
+    return $default;
+}
+
+function decode_json_value($value, $default = []) {
+    if (!is_string($value) || $value === '') {
+        return $default;
+    }
+
+    $decoded = json_decode($value, true);
+    return json_last_error() === JSON_ERROR_NONE ? $decoded : $default;
+}
+
+function iso_datetime(?string $value): ?string {
+    if ($value === null || $value === '') {
+        return null;
+    }
+
+    $timestamp = strtotime($value);
+    if ($timestamp === false) {
+        return $value;
+    }
+
+    return gmdate('c', $timestamp);
+}
+
+function now_sql(): string {
+    return gmdate('Y-m-d H:i:s');
+}
+
+function record_sort_value(array $item): string {
+    return (string) ($item['date'] ?? $item['dateStarted'] ?? $item['createdAt'] ?? '');
+}
+
+function sorted_records(array $items): array {
+    usort($items, function ($a, $b) {
+        return strcmp(record_sort_value($b), record_sort_value($a));
+    });
+    return array_values($items);
+}
+
+function collection_data(string $userId, string $collection): array {
+    if (!in_array($collection, DB_COLLECTIONS, true)) {
+        fail('Invalid collection', 400);
+    }
+
+    if (use_database()) {
+        try {
+            return db_collection_data($userId, $collection);
+        } catch (Throwable $exception) {
+            if (!app_config('legacy_json_fallback', true)) {
+                fail('Failed to load data', 500, $exception);
+            }
+        }
+    }
+
+    return legacy_collection_data($userId, $collection);
+}
+
+function save_collection_data(string $userId, string $collection, array $items): void {
+    if (!in_array($collection, DB_COLLECTIONS, true)) {
+        fail('Invalid collection', 400);
+    }
+
+    if (use_database()) {
+        try {
+            foreach ($items as $item) {
+                if (!is_array($item) || empty($item['id'])) {
+                    fail('Item with id is required', 422);
+                }
+                db_upsert_collection_item($userId, $collection, $item);
+            }
+            return;
+        } catch (Throwable $exception) {
+            if (!app_config('legacy_json_fallback', true)) {
+                fail('Failed to save data', 500, $exception);
+            }
+        }
+    }
+
+    legacy_save_collection_data($userId, $collection, $items);
+}
+
+function remove_collection_item(string $userId, string $collection, string $id): void {
+    if (use_database()) {
+        try {
+            db_delete_collection_item($userId, $collection, $id);
+            return;
+        } catch (Throwable $exception) {
+            if (!app_config('legacy_json_fallback', true)) {
+                fail('Failed to delete record', 500, $exception);
+            }
+        }
+    }
+
+    $items = legacy_collection_data($userId, $collection);
+    $filtered = array_values(array_filter($items, fn($item) => ($item['id'] ?? null) !== $id));
+    legacy_save_collection_data($userId, $collection, $filtered);
+}
+
+function legacy_collection_data(string $userId, string $collection): array {
+    ensure_legacy_user_storage($userId);
+    $data = read_json_file(legacy_user_record_path($userId, $collection), []);
+    return is_array($data) ? array_values($data) : [];
+}
+
+function legacy_save_collection_data(string $userId, string $collection, array $items): void {
+    ensure_legacy_user_storage($userId);
+    write_json_file(legacy_user_record_path($userId, $collection), array_values($items));
+}
+
+function db_collection_data(string $userId, string $collection): array {
+    switch ($collection) {
+        case 'locations':
+            return sorted_records(fetch_coops($userId));
+        case 'hens':
+            return sorted_records(fetch_birds($userId));
+        case 'eggLogs':
+            return sorted_records(fetch_egg_logs($userId));
+        case 'feedLogs':
+            return sorted_records(fetch_feed_logs($userId, 'feed'));
+        case 'medicationLogs':
+            return sorted_records(fetch_feed_logs($userId, 'medication'));
+        case 'saleLogs':
+            return sorted_records(fetch_sales($userId));
+        case 'chickBatches':
+            return sorted_records(fetch_incubation_batches($userId));
+        default:
+            fail('Invalid collection', 400);
+    }
+}
+
+function db_upsert_collection_item(string $userId, string $collection, array $item): void {
+    switch ($collection) {
+        case 'locations':
+            upsert_coop($userId, $item);
+            return;
+        case 'hens':
+            upsert_bird($userId, $item);
+            return;
+        case 'eggLogs':
+            upsert_egg_log($userId, $item);
+            return;
+        case 'feedLogs':
+            upsert_feed_log($userId, $item, 'feed');
+            return;
+        case 'medicationLogs':
+            upsert_feed_log($userId, $item, 'medication');
+            return;
+        case 'saleLogs':
+            upsert_sale($userId, $item);
+            return;
+        case 'chickBatches':
+            upsert_incubation_batch($userId, $item);
+            return;
+        default:
+            fail('Invalid collection', 400);
+    }
+}
+
+function db_delete_collection_item(string $userId, string $collection, string $id): void {
+    if ($collection === 'medicationLogs' && !can_store_medication_rows()) {
+        throw new RuntimeException('feed_logs table cannot distinguish medication rows');
+    }
+
+    $table = COLLECTION_TABLES[$collection] ?? null;
+    if (!$table) {
+        fail('Invalid collection', 400);
+    }
+
+    $conditions = [];
+    $params = [];
+
+    $idColumn = id_column($table) ?? 'id';
+    $conditions[] = "`{$idColumn}` = :id";
+    $params[':id'] = $id;
+
+    $userIdColumn = user_id_column($table);
+    if ($userIdColumn) {
+        $conditions[] = "`{$userIdColumn}` = :user_id";
+        $params[':user_id'] = $userId;
+    }
+
+    if ($table === 'feed_logs') {
+        $rowTypeClause = feed_log_kind_where_clause($table, $collection === 'medicationLogs' ? 'medication' : 'feed');
+        if ($rowTypeClause !== '') {
+            $conditions[] = $rowTypeClause;
+        }
+    }
+
+    $deletedAtColumn = delete_record_column($table);
+    if ($deletedAtColumn) {
+        $sql = "UPDATE `{$table}` SET `{$deletedAtColumn}` = :deleted_at WHERE " . implode(' AND ', $conditions);
+        $params[':deleted_at'] = now_sql();
+    } else {
+        $sql = "DELETE FROM `{$table}` WHERE " . implode(' AND ', $conditions);
+    }
+
+    $statement = db()->prepare($sql);
+    $statement->execute($params);
+}
+
+function table_select_sql(string $table, string $userId, ?string $extraWhere = null): array {
+    $conditions = [];
+    $params = [];
+
+    $deletedAtColumn = delete_record_column($table);
+    if ($deletedAtColumn) {
+        $conditions[] = "`{$deletedAtColumn}` IS NULL";
+    }
+
+    $userIdColumn = user_id_column($table);
+    if ($userIdColumn) {
+        $conditions[] = "`{$userIdColumn}` = :user_id";
+        $params[':user_id'] = $userId;
+    }
+
+    if ($extraWhere) {
+        $conditions[] = $extraWhere;
+    }
+
+    $orderColumns = array_filter([
+        first_existing_column($table, ['date', 'logged_at', 'logged_on', 'sale_date', 'date_started', 'created_at']),
+        created_at_column($table),
+        id_column($table),
+    ]);
+
+    $orderBy = [];
+    foreach ($orderColumns as $column) {
+        $orderBy[] = "`{$column}` DESC";
+    }
+    if (!$orderBy) {
+        $orderBy[] = '1 DESC';
+    }
+
+    $sql = "SELECT * FROM `{$table}`";
+    if ($conditions) {
+        $sql .= ' WHERE ' . implode(' AND ', $conditions);
+    }
+    $sql .= ' ORDER BY ' . implode(', ', $orderBy);
+
+    return [$sql, $params];
+}
+
+function fetch_rows(string $table, string $userId, ?string $extraWhere = null): array {
+    [$sql, $params] = table_select_sql($table, $userId, $extraWhere);
+    $statement = db()->prepare($sql);
+    $statement->execute($params);
+    return $statement->fetchAll();
+}
+
+function persist_row(string $table, string $recordId, string $userId, array $columnValues): void {
+    $columns = schema_columns($table);
+    $idColumn = id_column($table) ?? 'id';
+    $userIdColumn = user_id_column($table);
+    $createdAtColumn = created_at_column($table);
+    $updatedAtColumn = updated_at_column($table);
+
+    $existingConditions = ["`{$idColumn}` = :id"];
+    $existingParams = [':id' => $recordId];
+    if ($userIdColumn) {
+        $existingConditions[] = "`{$userIdColumn}` = :user_id";
+        $existingParams[':user_id'] = $userId;
+    }
+
+    $existingSql = "SELECT * FROM `{$table}` WHERE " . implode(' AND ', $existingConditions) . ' LIMIT 1';
+    $existingStatement = db()->prepare($existingSql);
+    $existingStatement->execute($existingParams);
+    $existing = $existingStatement->fetch();
+
+    $data = [];
+    foreach ($columnValues as $column => $value) {
+        if (isset($columns[$column])) {
+            $data[$column] = $value;
+        }
+    }
+
+    $data[$idColumn] = $recordId;
+    if ($userIdColumn) {
+        $data[$userIdColumn] = $userId;
+    }
+    if ($createdAtColumn && !$existing && !array_key_exists($createdAtColumn, $data)) {
+        $data[$createdAtColumn] = now_sql();
+    }
+    if ($updatedAtColumn) {
+        $data[$updatedAtColumn] = now_sql();
+    }
+
+    if ($existing) {
+        $assignments = [];
+        $params = [];
+        foreach ($data as $column => $value) {
+            if ($column === $idColumn) {
+                continue;
+            }
+            $param = ':set_' . $column;
+            $assignments[] = "`{$column}` = {$param}";
+            $params[$param] = $value;
+        }
+        if (!$assignments) {
+            return;
+        }
+        $params[':where_id'] = $recordId;
+        $where = ["`{$idColumn}` = :where_id"];
+        if ($userIdColumn) {
+            $where[] = "`{$userIdColumn}` = :where_user_id";
+            $params[':where_user_id'] = $userId;
+        }
+        $sql = "UPDATE `{$table}` SET " . implode(', ', $assignments) . ' WHERE ' . implode(' AND ', $where);
+        $statement = db()->prepare($sql);
+        $statement->execute($params);
+        return;
+    }
+
+    $insertColumns = array_keys($data);
+    $insertParams = [];
+    $placeholders = [];
+    foreach ($insertColumns as $column) {
+        $param = ':ins_' . $column;
+        $insertParams[$param] = $data[$column];
+        $placeholders[] = $param;
+    }
+
+    $sql = sprintf(
+        'INSERT INTO `%s` (%s) VALUES (%s)',
+        $table,
+        implode(', ', array_map(fn($column) => "`{$column}`", $insertColumns)),
+        implode(', ', $placeholders)
+    );
+    $statement = db()->prepare($sql);
+    $statement->execute($insertParams);
+}
+
+function feed_log_kind_where_clause(string $table, string $kind): string {
+    $typeColumn = first_existing_column($table, ['log_type', 'type', 'entry_type', 'kind', 'record_type', 'category']);
+    $medicationNameColumn = first_existing_column($table, ['medication_name', 'medicationName']);
+    $dosageColumn = first_existing_column($table, ['dosage']);
+
+    if ($typeColumn) {
+        return "`{$typeColumn}` = '" . ($kind === 'medication' ? 'medication' : 'feed') . "'";
+    }
+
+    if ($kind === 'medication' && ($medicationNameColumn || $dosageColumn)) {
+        $checks = [];
+        if ($medicationNameColumn) {
+            $checks[] = "(`{$medicationNameColumn}` IS NOT NULL AND `{$medicationNameColumn}` <> '')";
+        }
+        if ($dosageColumn) {
+            $checks[] = "(`{$dosageColumn}` IS NOT NULL AND `{$dosageColumn}` <> '')";
+        }
+        return '(' . implode(' OR ', $checks) . ')';
+    }
+
+    if ($kind === 'feed' && ($medicationNameColumn || $dosageColumn)) {
+        $checks = [];
+        if ($medicationNameColumn) {
+            $checks[] = "(`{$medicationNameColumn}` IS NULL OR `{$medicationNameColumn}` = '')";
+        }
+        if ($dosageColumn) {
+            $checks[] = "(`{$dosageColumn}` IS NULL OR `{$dosageColumn}` = '')";
+        }
+        return '(' . implode(' AND ', $checks) . ')';
+    }
+
+    return '';
+}
+
+function fetch_coops(string $userId): array {
+    return array_map('map_coop_row_to_record', fetch_rows('coops', $userId));
+}
+
+function map_coop_row_to_record(array $row): array {
+    $payload = decode_json_value($row[payload_column('coops') ?? ''] ?? null, []);
+    return [
+        'id' => (string) column_value($row, ['id', 'uuid'], $payload['id'] ?? ''),
+        'name' => (string) column_value($row, ['name', 'coop_name', 'title'], $payload['name'] ?? ''),
+        'type' => (string) column_value($row, ['type', 'coop_type'], $payload['type'] ?? 'Other'),
+        'photoUrl' => column_value($row, ['photo_url', 'photoUrl', 'image_url', 'imageUrl'], $payload['photoUrl'] ?? null),
+    ];
+}
+
+function upsert_coop(string $userId, array $item): void {
+    persist_row('coops', (string) $item['id'], $userId, array_filter([
+        'name' => $item['name'] ?? null,
+        'coop_name' => $item['name'] ?? null,
+        'type' => $item['type'] ?? null,
+        'coop_type' => $item['type'] ?? null,
+        'photo_url' => $item['photoUrl'] ?? null,
+        'photoUrl' => $item['photoUrl'] ?? null,
+        'image_url' => $item['photoUrl'] ?? null,
+        'imageUrl' => $item['photoUrl'] ?? null,
+        payload_column('coops') ?: '__skip_payload' => json_encode($item, JSON_UNESCAPED_SLASHES),
+    ], fn($value, $key) => $key !== '__skip_payload' && $value !== null, ARRAY_FILTER_USE_BOTH));
+}
+
+function fetch_birds(string $userId): array {
+    return array_map('map_bird_row_to_record', fetch_rows('birds', $userId));
+}
+
+function map_bird_row_to_record(array $row): array {
+    $payload = decode_json_value($row[payload_column('birds') ?? ''] ?? null, []);
+    return [
+        'id' => (string) column_value($row, ['id', 'uuid'], $payload['id'] ?? ''),
+        'name' => (string) column_value($row, ['name'], $payload['name'] ?? ''),
+        'breed' => column_value($row, ['breed'], $payload['breed'] ?? null),
+        'locationId' => (string) column_value($row, ['coop_id', 'location_id', 'locationId'], $payload['locationId'] ?? ''),
+        'status' => (string) column_value($row, ['status', 'appearance'], $payload['status'] ?? 'Healthy'),
+        'photoUrl' => column_value($row, ['photo_url', 'photoUrl', 'image_url', 'imageUrl'], $payload['photoUrl'] ?? null),
+        'notes' => column_value($row, ['notes'], $payload['notes'] ?? null),
+    ];
+}
+
+function upsert_bird(string $userId, array $item): void {
+    persist_row('birds', (string) $item['id'], $userId, array_filter([
+        'name' => $item['name'] ?? null,
+        'breed' => $item['breed'] ?? null,
+        'coop_id' => $item['locationId'] ?? null,
+        'location_id' => $item['locationId'] ?? null,
+        'locationId' => $item['locationId'] ?? null,
+        'status' => $item['status'] ?? null,
+        'appearance' => $item['status'] ?? null,
+        'photo_url' => $item['photoUrl'] ?? null,
+        'photoUrl' => $item['photoUrl'] ?? null,
+        'image_url' => $item['photoUrl'] ?? null,
+        'imageUrl' => $item['photoUrl'] ?? null,
+        'notes' => $item['notes'] ?? null,
+        payload_column('birds') ?: '__skip_payload' => json_encode($item, JSON_UNESCAPED_SLASHES),
+    ], fn($value, $key) => $key !== '__skip_payload' && $value !== null, ARRAY_FILTER_USE_BOTH));
+}
+
+function fetch_egg_logs(string $userId): array {
+    return array_map('map_egg_log_row_to_record', fetch_rows('egg_logs', $userId));
+}
+
+function map_egg_log_row_to_record(array $row): array {
+    $payload = decode_json_value($row[payload_column('egg_logs') ?? ''] ?? null, []);
+    return [
+        'id' => (string) column_value($row, ['id', 'uuid'], $payload['id'] ?? ''),
+        'date' => iso_datetime((string) column_value($row, ['date', 'logged_at', 'logged_on'], $payload['date'] ?? '')),
+        'count' => (int) column_value($row, ['count', 'egg_count', 'quantity'], $payload['count'] ?? 0),
+        'locationId' => (string) column_value($row, ['coop_id', 'location_id', 'locationId'], $payload['locationId'] ?? ''),
+        'notes' => column_value($row, ['notes'], $payload['notes'] ?? null),
+        'mode' => column_value($row, ['mode'], $payload['mode'] ?? null),
+        'coopTemperature' => column_value($row, ['coop_temperature', 'temperature', 'coopTemperature'], $payload['coopTemperature'] ?? null),
+    ];
+}
+
+function upsert_egg_log(string $userId, array $item): void {
+    persist_row('egg_logs', (string) $item['id'], $userId, array_filter([
+        'date' => $item['date'] ?? null,
+        'logged_at' => $item['date'] ?? null,
+        'logged_on' => $item['date'] ?? null,
+        'count' => $item['count'] ?? null,
+        'egg_count' => $item['count'] ?? null,
+        'quantity' => $item['count'] ?? null,
+        'coop_id' => $item['locationId'] ?? null,
+        'location_id' => $item['locationId'] ?? null,
+        'locationId' => $item['locationId'] ?? null,
+        'notes' => $item['notes'] ?? null,
+        'mode' => $item['mode'] ?? null,
+        'coop_temperature' => $item['coopTemperature'] ?? null,
+        'temperature' => $item['coopTemperature'] ?? null,
+        'coopTemperature' => $item['coopTemperature'] ?? null,
+        payload_column('egg_logs') ?: '__skip_payload' => json_encode($item, JSON_UNESCAPED_SLASHES),
+    ], fn($value, $key) => $key !== '__skip_payload' && $value !== null, ARRAY_FILTER_USE_BOTH));
+}
+
+function can_store_medication_rows(): bool {
+    return first_existing_column('feed_logs', ['log_type', 'type', 'entry_type', 'kind', 'record_type', 'category']) !== null
+        || first_existing_column('feed_logs', ['medication_name', 'medicationName']) !== null
+        || first_existing_column('feed_logs', ['dosage']) !== null;
+}
+
+function fetch_feed_logs(string $userId, string $kind): array {
+    if ($kind === 'medication' && !can_store_medication_rows()) {
+        throw new RuntimeException('feed_logs table cannot distinguish medication rows');
+    }
+
+    $extraWhere = feed_log_kind_where_clause('feed_logs', $kind);
+    return array_map(
+        fn($row) => map_feed_log_row_to_record($row, $kind),
+        fetch_rows('feed_logs', $userId, $extraWhere ?: null)
+    );
+}
+
+function map_feed_log_row_to_record(array $row, string $kind): array {
+    $payload = decode_json_value($row[payload_column('feed_logs') ?? ''] ?? null, []);
+    if ($kind === 'medication') {
+        return [
+            'id' => (string) column_value($row, ['id', 'uuid'], $payload['id'] ?? ''),
+            'date' => iso_datetime((string) column_value($row, ['date', 'logged_at', 'logged_on'], $payload['date'] ?? '')),
+            'henId' => column_value($row, ['bird_id', 'hen_id', 'henId'], $payload['henId'] ?? null),
+            'locationId' => (string) column_value($row, ['coop_id', 'location_id', 'locationId'], $payload['locationId'] ?? ''),
+            'medicationName' => (string) column_value($row, ['medication_name', 'medicationName', 'name'], $payload['medicationName'] ?? ''),
+            'dosage' => (string) column_value($row, ['dosage'], $payload['dosage'] ?? ''),
+            'notes' => column_value($row, ['notes'], $payload['notes'] ?? null),
+        ];
+    }
+
+    return [
+        'id' => (string) column_value($row, ['id', 'uuid'], $payload['id'] ?? ''),
+        'date' => iso_datetime((string) column_value($row, ['date', 'logged_at', 'logged_on'], $payload['date'] ?? '')),
+        'amount' => (int) column_value($row, ['amount', 'quantity'], $payload['amount'] ?? 0),
+        'cost' => column_value($row, ['cost', 'price'], $payload['cost'] ?? null),
+        'weight' => column_value($row, ['weight'], $payload['weight'] ?? null),
+        'feedType' => column_value($row, ['feed_type', 'feedType', 'type'], $payload['feedType'] ?? null),
+        'locationId' => (string) column_value($row, ['coop_id', 'location_id', 'locationId'], $payload['locationId'] ?? ''),
+        'notes' => column_value($row, ['notes'], $payload['notes'] ?? null),
+    ];
+}
+
+function upsert_feed_log(string $userId, array $item, string $kind): void {
+    if ($kind === 'medication' && !can_store_medication_rows()) {
+        throw new RuntimeException('feed_logs table cannot store medication rows safely');
+    }
+
+    $typeColumn = first_existing_column('feed_logs', ['log_type', 'type', 'entry_type', 'kind', 'record_type', 'category']);
+    $values = [
+        'date' => $item['date'] ?? null,
+        'logged_at' => $item['date'] ?? null,
+        'logged_on' => $item['date'] ?? null,
+        'coop_id' => $item['locationId'] ?? null,
+        'location_id' => $item['locationId'] ?? null,
+        'locationId' => $item['locationId'] ?? null,
+        'notes' => $item['notes'] ?? null,
+        payload_column('feed_logs') ?: '__skip_payload' => json_encode($item, JSON_UNESCAPED_SLASHES),
+    ];
+
+    if ($kind === 'medication') {
+        $values += [
+            'bird_id' => $item['henId'] ?? null,
+            'hen_id' => $item['henId'] ?? null,
+            'henId' => $item['henId'] ?? null,
+            'medication_name' => $item['medicationName'] ?? null,
+            'medicationName' => $item['medicationName'] ?? null,
+            'dosage' => $item['dosage'] ?? null,
+            'amount' => null,
+            'quantity' => null,
+            'cost' => null,
+            'price' => null,
+            'weight' => null,
+            'feed_type' => null,
+            'feedType' => null,
+        ];
+        if ($typeColumn) {
+            $values[$typeColumn] = 'medication';
+        }
+    } else {
+        $values += [
+            'amount' => $item['amount'] ?? null,
+            'quantity' => $item['amount'] ?? null,
+            'cost' => $item['cost'] ?? null,
+            'price' => $item['cost'] ?? null,
+            'weight' => $item['weight'] ?? null,
+            'feed_type' => $item['feedType'] ?? null,
+            'feedType' => $item['feedType'] ?? null,
+            'medication_name' => null,
+            'medicationName' => null,
+            'dosage' => null,
+        ];
+        if ($typeColumn) {
+            $values[$typeColumn] = 'feed';
+        }
+    }
+
+    persist_row('feed_logs', (string) $item['id'], $userId, array_filter($values, fn($value, $key) => $key !== '__skip_payload' || $value !== null, ARRAY_FILTER_USE_BOTH));
+}
+
+function fetch_sales(string $userId): array {
+    return array_map('map_sale_row_to_record', fetch_rows('sales', $userId));
+}
+
+function map_sale_row_to_record(array $row): array {
+    $payload = decode_json_value($row[payload_column('sales') ?? ''] ?? null, []);
+    return [
+        'id' => (string) column_value($row, ['id', 'uuid'], $payload['id'] ?? ''),
+        'date' => iso_datetime((string) column_value($row, ['date', 'sale_date', 'sold_at', 'logged_at'], $payload['date'] ?? '')),
+        'quantity' => (int) column_value($row, ['quantity', 'count'], $payload['quantity'] ?? 0),
+        'price' => (float) column_value($row, ['price', 'amount', 'total'], $payload['price'] ?? 0),
+        'itemType' => column_value($row, ['item_type', 'itemType', 'type'], $payload['itemType'] ?? null),
+        'notes' => column_value($row, ['notes'], $payload['notes'] ?? null),
+    ];
+}
+
+function upsert_sale(string $userId, array $item): void {
+    persist_row('sales', (string) $item['id'], $userId, array_filter([
+        'date' => $item['date'] ?? null,
+        'sale_date' => $item['date'] ?? null,
+        'sold_at' => $item['date'] ?? null,
+        'logged_at' => $item['date'] ?? null,
+        'quantity' => $item['quantity'] ?? null,
+        'count' => $item['quantity'] ?? null,
+        'price' => $item['price'] ?? null,
+        'amount' => $item['price'] ?? null,
+        'total' => $item['price'] ?? null,
+        'item_type' => $item['itemType'] ?? null,
+        'itemType' => $item['itemType'] ?? null,
+        'type' => $item['itemType'] ?? null,
+        'notes' => $item['notes'] ?? null,
+        payload_column('sales') ?: '__skip_payload' => json_encode($item, JSON_UNESCAPED_SLASHES),
+    ], fn($value, $key) => $key !== '__skip_payload' && $value !== null, ARRAY_FILTER_USE_BOTH));
+}
+
+function fetch_incubation_batches(string $userId): array {
+    return array_map('map_incubation_row_to_record', fetch_rows('incubation_batches', $userId));
+}
+
+function map_incubation_row_to_record(array $row): array {
+    $payload = decode_json_value($row[payload_column('incubation_batches') ?? ''] ?? null, []);
+    $chicksValue = column_value($row, ['chicks_json', 'chicks'], $payload['chicks'] ?? []);
+    $chicks = is_array($chicksValue) ? $chicksValue : decode_json_value($chicksValue, []);
+
+    return [
+        'id' => (string) column_value($row, ['id', 'uuid'], $payload['id'] ?? ''),
+        'dateStarted' => iso_datetime((string) column_value($row, ['date_started', 'dateStarted', 'started_at'], $payload['dateStarted'] ?? '')),
+        'expectedHatchDate' => iso_datetime((string) column_value($row, ['expected_hatch_date', 'expectedHatchDate'], $payload['expectedHatchDate'] ?? '')),
+        'hatchDate' => iso_datetime(column_value($row, ['hatch_date', 'hatchDate'], $payload['hatchDate'] ?? null)),
+        'count' => (int) column_value($row, ['count', 'egg_count', 'quantity'], $payload['count'] ?? 0),
+        'status' => (string) column_value($row, ['status'], $payload['status'] ?? 'Incubating'),
+        'locationId' => (string) column_value($row, ['coop_id', 'location_id', 'locationId'], $payload['locationId'] ?? ''),
+        'notes' => column_value($row, ['notes'], $payload['notes'] ?? null),
+        'hatchedCount' => column_value($row, ['hatched_count', 'hatchedCount'], $payload['hatchedCount'] ?? null),
+        'perishedCount' => column_value($row, ['perished_count', 'perishedCount'], $payload['perishedCount'] ?? null),
+        'chicks' => $chicks,
+        'photoUrl' => column_value($row, ['photo_url', 'photoUrl', 'image_url', 'imageUrl'], $payload['photoUrl'] ?? null),
+    ];
+}
+
+function upsert_incubation_batch(string $userId, array $item): void {
+    persist_row('incubation_batches', (string) $item['id'], $userId, array_filter([
+        'date_started' => $item['dateStarted'] ?? null,
+        'dateStarted' => $item['dateStarted'] ?? null,
+        'started_at' => $item['dateStarted'] ?? null,
+        'expected_hatch_date' => $item['expectedHatchDate'] ?? null,
+        'expectedHatchDate' => $item['expectedHatchDate'] ?? null,
+        'hatch_date' => $item['hatchDate'] ?? null,
+        'hatchDate' => $item['hatchDate'] ?? null,
+        'count' => $item['count'] ?? null,
+        'egg_count' => $item['count'] ?? null,
+        'quantity' => $item['count'] ?? null,
+        'status' => $item['status'] ?? null,
+        'coop_id' => $item['locationId'] ?? null,
+        'location_id' => $item['locationId'] ?? null,
+        'locationId' => $item['locationId'] ?? null,
+        'notes' => $item['notes'] ?? null,
+        'hatched_count' => $item['hatchedCount'] ?? null,
+        'hatchedCount' => $item['hatchedCount'] ?? null,
+        'perished_count' => $item['perishedCount'] ?? null,
+        'perishedCount' => $item['perishedCount'] ?? null,
+        'chicks_json' => isset($item['chicks']) ? json_encode($item['chicks'], JSON_UNESCAPED_SLASHES) : null,
+        'chicks' => isset($item['chicks']) ? json_encode($item['chicks'], JSON_UNESCAPED_SLASHES) : null,
+        'photo_url' => $item['photoUrl'] ?? null,
+        'photoUrl' => $item['photoUrl'] ?? null,
+        'image_url' => $item['photoUrl'] ?? null,
+        'imageUrl' => $item['photoUrl'] ?? null,
+        payload_column('incubation_batches') ?: '__skip_payload' => json_encode($item, JSON_UNESCAPED_SLASHES),
+    ], fn($value, $key) => $key !== '__skip_payload' && $value !== null, ARRAY_FILTER_USE_BOTH));
+}
+
+function db_find_user_by_email(string $email): ?array {
+    $table = 'users';
+    $emailColumn = first_existing_column($table, ['email']);
+    if (!$emailColumn) {
+        fail('Users table is missing an email column');
+    }
+
+    $deletedAtColumn = delete_record_column($table);
+    $conditions = ["`{$emailColumn}` = :email"];
+    if ($deletedAtColumn) {
+        $conditions[] = "`{$deletedAtColumn}` IS NULL";
+    }
+
+    $sql = "SELECT * FROM `{$table}` WHERE " . implode(' AND ', $conditions) . ' LIMIT 1';
+    $statement = db()->prepare($sql);
+    $statement->execute([':email' => $email]);
+    $row = $statement->fetch();
+    return $row ?: null;
+}
+
+function db_find_user_by_id(string $id): ?array {
+    $table = 'users';
+    $idColumn = id_column($table) ?? 'id';
+    $conditions = ["`{$idColumn}` = :id"];
+    $deletedAtColumn = delete_record_column($table);
+    if ($deletedAtColumn) {
+        $conditions[] = "`{$deletedAtColumn}` IS NULL";
+    }
+
+    $sql = "SELECT * FROM `{$table}` WHERE " . implode(' AND ', $conditions) . ' LIMIT 1';
+    $statement = db()->prepare($sql);
+    $statement->execute([':id' => $id]);
+    $row = $statement->fetch();
+    return $row ?: null;
+}
+
+function password_hash_column(): ?string {
+    return first_existing_column('users', ['password_hash', 'passwordHash', 'password']);
+}
+
+function nickname_column(): ?string {
+    return first_existing_column('users', ['nickname', 'name', 'display_name', 'displayName']);
+}
+
+function map_user_row(array $row): array {
+    return [
+        'id' => (string) column_value($row, ['id', 'uuid'], ''),
+        'email' => (string) column_value($row, ['email'], ''),
+        'nickname' => column_value($row, ['nickname', 'name', 'display_name', 'displayName'], null),
+        'passwordHash' => column_value($row, ['password_hash', 'passwordHash', 'password'], ''),
+        'createdAt' => iso_datetime(column_value($row, ['created_at', 'createdAt'], null)),
+    ];
+}
+
+function create_db_user(string $email, string $password, string $nickname): array {
+    $userId = bin2hex(random_bytes(16));
+    $table = 'users';
+    $values = [];
+
+    $idColumn = id_column($table) ?? 'id';
+    $values[$idColumn] = $userId;
+    $emailColumn = first_existing_column($table, ['email']) ?? 'email';
+    $values[$emailColumn] = $email;
+    $passwordColumn = password_hash_column() ?? 'password_hash';
+    $values[$passwordColumn] = password_hash($password, PASSWORD_DEFAULT);
+
+    $nicknameColumn = nickname_column();
+    if ($nicknameColumn) {
+        $values[$nicknameColumn] = $nickname;
+    }
+
+    $createdAtColumn = created_at_column($table);
+    if ($createdAtColumn) {
+        $values[$createdAtColumn] = now_sql();
+    }
+    $updatedAtColumn = updated_at_column($table);
+    if ($updatedAtColumn) {
+        $values[$updatedAtColumn] = now_sql();
+    }
+
+    $columns = array_keys($values);
+    $params = [];
+    $placeholders = [];
+    foreach ($columns as $column) {
+        $param = ':'.$column;
+        $placeholders[] = $param;
+        $params[$param] = $values[$column];
+    }
+
+    $sql = sprintf(
+        'INSERT INTO `%s` (%s) VALUES (%s)',
+        $table,
+        implode(', ', array_map(fn($column) => "`{$column}`", $columns)),
+        implode(', ', $placeholders)
+    );
+
+    $statement = db()->prepare($sql);
+    $statement->execute($params);
+
+    return [
+        'id' => $userId,
+        'email' => $email,
+        'nickname' => $nickname,
+        'passwordHash' => $values[$passwordColumn],
+        'createdAt' => iso_datetime($values[$createdAtColumn] ?? now_sql()),
     ];
 }
 
 function current_user(): ?array {
     $userId = $_SESSION['user_id'] ?? null;
-    if (!$userId) return null;
+    if (!$userId) {
+        return null;
+    }
 
-    foreach (all_users() as $user) {
+    if (use_database()) {
+        try {
+            $row = db_find_user_by_id($userId);
+            return $row ? map_user_row($row) : null;
+        } catch (Throwable $exception) {
+            if (!app_config('legacy_json_fallback', true)) {
+                fail('Failed to load current user', 500, $exception);
+            }
+        }
+    }
+
+    foreach (legacy_all_users() as $user) {
         if (($user['id'] ?? null) === $userId) {
-            ensure_user_storage($userId);
+            ensure_legacy_user_storage($userId);
             return $user;
         }
     }
@@ -178,15 +1146,4 @@ function require_auth(): array {
     return $user;
 }
 
-function collection_data(string $userId, string $collection): array {
-    ensure_user_storage($userId);
-    $data = read_json_file(user_record_path($userId, $collection), []);
-    return is_array($data) ? array_values($data) : [];
-}
-
-function save_collection_data(string $userId, string $collection, array $items): void {
-    ensure_user_storage($userId);
-    write_json_file(user_record_path($userId, $collection), array_values($items));
-}
-
-ensure_storage();
+ensure_legacy_storage();

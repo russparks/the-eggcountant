@@ -1,0 +1,22 @@
+<?php
+
+return [
+    'app_env' => 'production',
+    'app_debug' => false,
+    'allowed_origins' => [
+        'http://localhost:3000',
+        'http://127.0.0.1:3000',
+        'http://localhost:5173',
+        'http://127.0.0.1:5173',
+        'https://your-domain.example',
+    ],
+    // Keep this false in production. It only exists to make local/dev easier if MySQL is unavailable.
+    'legacy_json_fallback' => true,
+    'db' => [
+        'host' => 'localhost',
+        'name' => 'u726116940_PeopleProjects',
+        'user' => 'u726116940_axislabs',
+        'password' => 'replace-me',
+        'charset' => 'utf8mb4',
+    ],
+];

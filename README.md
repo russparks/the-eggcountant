@@ -1,15 +1,66 @@
 # The Eggcountant
 
-A lightweight React + PHP flock tracker rebuilt for cheap-and-cheerful shared hosting.
+A lightweight React + PHP flock tracker built for cheap-and-cheerful shared hosting.
 
 ## Stack
 
 - Frontend: Vite + React + TypeScript
 - Backend: plain PHP endpoints under `api/`
 - Auth: PHP sessions + `password_hash()` / `password_verify()`
-- Storage: JSON files in `data/` with file locking
+- Primary storage: MySQL / MariaDB
+- Dev fallback: optional legacy JSON storage when DB config is missing or disabled
 
-No Firebase. No database server. No drama.
+No Firebase. No framework soup. Minimal shared-hosting drama.
+
+## Backend storage mapping
+
+The frontend API contract stays the same, but the PHP layer now maps collections onto Hostinger MySQL tables:
+
+- `locations` → `coops`
+- `hens` → `birds`
+- `eggLogs` → `egg_logs`
+- `feedLogs` → `feed_logs`
+- `medicationLogs` → `feed_logs` (stored as medication-shaped rows when possible)
+- `saleLogs` → `sales`
+- `chickBatches` → `incubation_batches`
+- auth/session users → `users`
+
+The storage layer is intentionally defensive:
+
+- it inspects table columns at runtime
+- it supports common column-name variants
+- when a JSON/payload column exists, it stores the full frontend record there too
+
+That makes it more forgiving if the phpMyAdmin schema differs slightly from local assumptions.
+
+## Config
+
+Copy the example config and fill in the real DB password locally/on the server:
+
+```bash
+cp api/config.php.example api/config.php
+```
+
+`api/config.php` is git-ignored.
+
+Example shape:
+
+```php
+return [
+    'allowed_origins' => [
+        'http://localhost:3000',
+        'https://your-domain.example',
+    ],
+    'legacy_json_fallback' => true,
+    'db' => [
+        'host' => 'localhost',
+        'name' => 'u726116940_PeopleProjects',
+        'user' => 'u726116940_axislabs',
+        'password' => 'your-real-password-here',
+        'charset' => 'utf8mb4',
+    ],
+];
+```
 
 ## Local development
 
@@ -32,23 +83,21 @@ php -S localhost:8000
 
 That serves the repo root so the API is available at `http://localhost:8000/api/...`.
 
-## Data layout
+If `api/config.php` is not present, the backend can fall back to the old JSON files for local/dev work.
 
-```text
-data/
-  users/
-    users.json
-    <user-id>/
-      locations.json
-      eggLogs.json
-      hens.json
-      feedLogs.json
-      medicationLogs.json
-      saleLogs.json
-      chickBatches.json
+## Legacy importer
+
+If you already have JSON-based data, there is a lightweight importer:
+
+```bash
+php api/import_legacy_json.php
 ```
 
-This is designed to be easy to back up or move.
+Notes:
+
+- CLI only, on purpose
+- it copies users and per-user collection data from `data/users/` into MySQL
+- if a user already exists by email, their records are merged/upserted by record id
 
 ## Hostinger deploy steps
 
@@ -57,30 +106,30 @@ This is designed to be easy to back up or move.
    npm install
    npm run build
    ```
-2. In Hostinger hPanel, open **File Manager** for the target domain.
-3. Upload these into `public_html/`:
+2. Create `api/config.php` from `api/config.php.example` and set the real DB password.
+3. In Hostinger hPanel, open **File Manager** for the target domain.
+4. Upload these into `public_html/`:
    - everything from `dist/`
    - `api/`
    - `.htaccess`
-4. Create a writable `data/` folder alongside `api/` inside `public_html/`.
-5. Inside `data/`, keep the included `.htaccess` so the raw JSON files are not web-accessible.
-6. If needed, set permissions so PHP can write to `data/` and `data/users/`.
-   - Typical shared-hosting safe default: directories `755`, files `644`
-   - If Hostinger blocks writes, set `data/` and `data/users/` to writable in File Manager
-7. Visit the site, register the first account, and start using it.
+5. Make sure the MySQL tables already exist:
+   - `users`
+   - `coops`
+   - `birds`
+   - `egg_logs`
+   - `incubation_batches`
+   - `sales`
+   - `feed_logs`
+6. If you are importing legacy JSON data, temporarily upload `data/` too and run the importer from CLI if available.
+7. Visit the site, register or log in, and confirm records are saving to MySQL.
 
 ## Important Hostinger note
 
 The root `.htaccess` rewrites unknown routes back to `index.html` for the React app while leaving `/api/` alone.
 
-## Manual setup still required
-
-- Upload the built frontend and PHP files to Hostinger
-- Ensure the `data/` directory is writable by PHP
-- Register your real user accounts after deploy
-
 ## Security / caveats
 
 - This is intentionally simple session auth for small private use, not a full multi-tenant SaaS stack.
-- Uploaded images are stored inline as base64 inside JSON records. Fine for a lightweight app, not ideal for huge image-heavy usage.
-- There is no password reset email flow anymore because Firebase is gone and the brief asked for simple email/password auth only.
+- Uploaded images are still stored inline as base64 data URLs inside records.
+- `api/config.php` should never be committed.
+- The DB layer is designed to handle minor schema-name differences, but it still assumes the listed tables are present and writable.

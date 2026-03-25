@@ -7,8 +7,8 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 
 $input = json_input();
 $email = normalize_email($input['email'] ?? '');
-$password = (string)($input['password'] ?? '');
-$nickname = trim((string)($input['nickname'] ?? ''));
+$password = (string) ($input['password'] ?? '');
+$nickname = trim((string) ($input['nickname'] ?? ''));
 
 if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
     respond(['error' => 'Please enter a valid email address'], 422);
@@ -22,7 +22,23 @@ if ($nickname === '') {
     respond(['error' => 'Nickname is required'], 422);
 }
 
-$users = all_users();
+if (use_database()) {
+    try {
+        if (db_find_user_by_email($email)) {
+            respond(['error' => 'That email is already registered'], 409);
+        }
+
+        $user = create_db_user($email, $password, $nickname);
+        $_SESSION['user_id'] = $user['id'];
+        respond(['user' => public_user($user)]);
+    } catch (Throwable $exception) {
+        if (!app_config('legacy_json_fallback', true)) {
+            fail('Registration failed', 500, $exception);
+        }
+    }
+}
+
+$users = legacy_all_users();
 foreach ($users as $user) {
     if (($user['email'] ?? '') === $email) {
         respond(['error' => 'That email is already registered'], 409);
@@ -38,8 +54,8 @@ $user = [
 ];
 
 $users[] = $user;
-save_users($users);
-ensure_user_storage($user['id']);
+legacy_save_users($users);
+ensure_legacy_user_storage($user['id']);
 $_SESSION['user_id'] = $user['id'];
 
 respond(['user' => public_user($user)]);
