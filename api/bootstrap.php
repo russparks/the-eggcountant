@@ -1058,12 +1058,21 @@ function map_user_row(array $row): array {
 }
 
 function create_db_user(string $email, string $password, string $nickname): array {
-    $userId = bin2hex(random_bytes(16));
     $table = 'users';
     $values = [];
 
     $idColumn = id_column($table) ?? 'id';
-    $values[$idColumn] = $userId;
+    $isAutoIncrementId = false;
+    if ($idColumn && ($column = table_column($table, $idColumn))) {
+        $extra = strtolower((string) ($column['Extra'] ?? $column['extra'] ?? ''));
+        $isAutoIncrementId = str_contains($extra, 'auto_increment');
+    }
+
+    $userId = $isAutoIncrementId ? null : bin2hex(random_bytes(16));
+    if (!$isAutoIncrementId && $idColumn) {
+        $values[$idColumn] = $userId;
+    }
+
     $emailColumn = first_existing_column($table, ['email']) ?? 'email';
     $values[$emailColumn] = $email;
     $passwordColumn = password_hash_column() ?? 'password_hash';
