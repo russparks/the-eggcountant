@@ -1,0 +1,201 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: /users/{userId}/locations
+    // Fields: id (string), name (string), type (string), capacity (number), photoUrl (string)
+    //
+    // Collection: /users/{userId}/eggLogs
+    // Fields: id (string), count (number), locationId (string), date (string)
+    //
+    // Collection: /users/{userId}/hens
+    // Fields: id (string), name (string), breed (string), age (number), locationId (string), photoUrl (string), status (string)
+    //
+    // Collection: /users/{userId}/feedLogs
+    // Fields: id (string), type (string), quantity (number), cost (number), date (string), locationId (string)
+    //
+    // Collection: /users/{userId}/medicationLogs
+    // Fields: id (string), henId (string), medication (string), dosage (string), date (string), notes (string)
+    //
+    // Collection: /users/{userId}/saleLogs
+    // Fields: id (string), quantity (number), price (number), date (string)
+    //
+    // Collection: /users/{userId}/chickBatches
+    // Fields: id (string), dateStarted (string), expectedHatchDate (string), count (number), status (string), locationId (string), notes (string), hatchedCount (number), perishedCount (number), photoUrl (string), chicks (list)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    function isValidString(field, min, max) {
+      return request.resource.data[field] is string && 
+             request.resource.data[field].size() >= min && 
+             request.resource.data[field].size() <= max;
+    }
+
+    function isValidNumber(field, min, max) {
+      return request.resource.data[field] is number && 
+             request.resource.data[field] >= min && 
+             request.resource.data[field] <= max;
+    }
+
+    function isValidDate(field) {
+      return request.resource.data[field] is string && 
+             request.resource.data[field].matches("^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}.*Z?$");
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+    function isValidLocation() {
+      return hasRequiredFields(['id', 'name', 'type', 'capacity']) &&
+             hasOnlyAllowedFields(['id', 'name', 'type', 'capacity', 'photoUrl']) &&
+             isValidString('id', 1, 100) &&
+             isValidString('name', 1, 100) &&
+             request.resource.data.type in ['Coop', 'Free Range', 'Barn'] &&
+             isValidNumber('capacity', 0, 10000);
+    }
+
+    function isValidEggLog() {
+      return hasRequiredFields(['id', 'count', 'locationId', 'date']) &&
+             hasOnlyAllowedFields(['id', 'count', 'locationId', 'date']) &&
+             isValidString('id', 1, 100) &&
+             isValidNumber('count', 0, 10000) &&
+             isValidString('locationId', 1, 100) &&
+             isValidDate('date');
+    }
+
+    function isValidHen() {
+      return hasRequiredFields(['id', 'name', 'breed', 'age', 'locationId', 'status']) &&
+             hasOnlyAllowedFields(['id', 'name', 'breed', 'age', 'locationId', 'photoUrl', 'status']) &&
+             isValidString('id', 1, 100) &&
+             isValidString('name', 1, 100) &&
+             isValidString('breed', 1, 100) &&
+             isValidNumber('age', 0, 20) &&
+             isValidString('locationId', 1, 100) &&
+             request.resource.data.status in ['Healthy', 'Sick', 'Isolated', 'Deceased'];
+    }
+
+    function isValidFeedLog() {
+      return hasRequiredFields(['id', 'type', 'quantity', 'cost', 'date', 'locationId']) &&
+             hasOnlyAllowedFields(['id', 'type', 'quantity', 'cost', 'date', 'locationId']) &&
+             isValidString('id', 1, 100) &&
+             isValidString('type', 1, 100) &&
+             isValidNumber('quantity', 0, 10000) &&
+             isValidNumber('cost', 0, 10000) &&
+             isValidDate('date') &&
+             isValidString('locationId', 1, 100);
+    }
+
+    function isValidMedicationLog() {
+      return hasRequiredFields(['id', 'henId', 'medication', 'dosage', 'date']) &&
+             hasOnlyAllowedFields(['id', 'henId', 'medication', 'dosage', 'date', 'notes']) &&
+             isValidString('id', 1, 100) &&
+             isValidString('henId', 1, 100) &&
+             isValidString('medication', 1, 100) &&
+             isValidString('dosage', 1, 100) &&
+             isValidDate('date');
+    }
+
+    function isValidSaleLog() {
+      return hasRequiredFields(['id', 'quantity', 'price', 'date']) &&
+             hasOnlyAllowedFields(['id', 'quantity', 'price', 'date']) &&
+             isValidString('id', 1, 100) &&
+             isValidNumber('quantity', 0, 10000) &&
+             isValidNumber('price', 0, 10000) &&
+             isValidDate('date');
+    }
+
+    function isValidChickBatch() {
+      return hasRequiredFields(['id', 'dateStarted', 'expectedHatchDate', 'count', 'status', 'locationId']) &&
+             hasOnlyAllowedFields(['id', 'dateStarted', 'expectedHatchDate', 'count', 'status', 'locationId', 'notes', 'hatchedCount', 'perishedCount', 'photoUrl', 'chicks']) &&
+             isValidString('id', 1, 100) &&
+             isValidDate('dateStarted') &&
+             isValidDate('expectedHatchDate') &&
+             isValidNumber('count', 0, 1000) &&
+             request.resource.data.status in ['Incubating', 'Hatched', 'Failed'] &&
+             isValidString('locationId', 1, 100);
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+    match /users/{userId} {
+      allow read: if isOwner(userId);
+      
+      match /locations/{locationId} {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidLocation();
+        allow update: if isOwner(userId) && isValidLocation();
+        allow delete: if isOwner(userId);
+      }
+
+      match /eggLogs/{logId} {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidEggLog();
+        allow update: if isOwner(userId) && isValidEggLog();
+        allow delete: if isOwner(userId);
+      }
+
+      match /hens/{henId} {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidHen();
+        allow update: if isOwner(userId) && isValidHen();
+        allow delete: if isOwner(userId);
+      }
+
+      match /feedLogs/{logId} {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidFeedLog();
+        allow update: if isOwner(userId) && isValidFeedLog();
+        allow delete: if isOwner(userId);
+      }
+
+      match /medicationLogs/{logId} {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidMedicationLog();
+        allow update: if isOwner(userId) && isValidMedicationLog();
+        allow delete: if isOwner(userId);
+      }
+
+      match /saleLogs/{logId} {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidSaleLog();
+        allow update: if isOwner(userId) && isValidSaleLog();
+        allow delete: if isOwner(userId);
+      }
+
+      match /chickBatches/{batchId} {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidChickBatch();
+        allow update: if isOwner(userId) && isValidChickBatch();
+        allow delete: if isOwner(userId);
+      }
+    }
+    
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
