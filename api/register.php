@@ -8,6 +8,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 $input = json_input();
 $email = normalize_email($input['email'] ?? '');
 $password = (string)($input['password'] ?? '');
+$nickname = trim((string)($input['nickname'] ?? ''));
 
 if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
     respond(['error' => 'Please enter a valid email address'], 422);
@@ -15,6 +16,10 @@ if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
 
 if (strlen($password) < 8) {
     respond(['error' => 'Password must be at least 8 characters'], 422);
+}
+
+if ($nickname === '') {
+    respond(['error' => 'Nickname is required'], 422);
 }
 
 $users = all_users();
@@ -27,6 +32,7 @@ foreach ($users as $user) {
 $user = [
     'id' => bin2hex(random_bytes(16)),
     'email' => $email,
+    'nickname' => $nickname,
     'passwordHash' => password_hash($password, PASSWORD_DEFAULT),
     'createdAt' => gmdate('c'),
 ];

@@ -9,7 +9,7 @@ header('Access-Control-Allow-Credentials: true');
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     header('Access-Control-Allow-Origin: ' . get_allowed_origin());
     header('Access-Control-Allow-Headers: Content-Type');
-    header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
+    header('Access-Control-Allow-Methods: GET, POST, DELETE, OPTIONS');
     exit;
 }
 
@@ -130,10 +130,7 @@ function ensure_user_storage(string $userId): void {
 }
 
 function default_locations(): array {
-    return [
-        ['id' => 'loc-1', 'name' => 'Cluckingham Palace', 'type' => 'Garden'],
-        ['id' => 'loc-2', 'name' => 'The Yolk Yard', 'type' => 'Allotment'],
-    ];
+    return [];
 }
 
 function all_users(): array {
@@ -154,6 +151,7 @@ function public_user(array $user): array {
     return [
         'id' => $user['id'],
         'email' => $user['email'],
+        'nickname' => $user['nickname'] ?? null,
         'createdAt' => $user['createdAt'] ?? null,
     ];
 }

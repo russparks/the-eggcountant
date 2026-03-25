@@ -14,6 +14,7 @@ export type AppRecordMap = {
 export type SessionUser = {
   id: string;
   email: string;
+  nickname?: string;
   createdAt?: string | null;
 };
 
@@ -41,9 +42,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const authApi = {
   session: async () => request<{ user: SessionUser | null }>('/session.php'),
-  register: async (email: string, password: string) => request<{ user: SessionUser }>('/register.php', {
+  register: async (email: string, password: string, nickname: string) => request<{ user: SessionUser }>('/register.php', {
     method: 'POST',
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({ email, password, nickname }),
   }),
   login: async (email: string, password: string) => request<{ user: SessionUser }>('/login.php', {
     method: 'POST',
