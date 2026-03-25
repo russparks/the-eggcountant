@@ -33,7 +33,14 @@ import {
 } from 'lucide-react';
 import { authApi, dataApi, SessionUser } from './api';
 import { CHICKEN_FACTS, CHICKEN_WIKI } from './constants';
-import { ChickBatch, EggLog, EggLogMode, FeedLog, Hen, HenAppearance, Location, MedicationLog, SaleLog } from './types';
+import { ChickBatch, EggLog, EggLogMode, FeedLog, Hen, HenAppearance, Location, MedicationLog, SaleItemType, SaleLog } from './types';
+import eggcountantLogo from '../media/eggcountant-logo.png';
+import singleEggIcon from '../media/1-egg.png';
+import doubleEggIcon from '../media/2-eggs.png';
+import tripleEggIcon from '../media/3-eggs.png';
+import eggCupIcon from '../media/1-egg-cup.png';
+import friedEggIcon from '../media/1-fried.png';
+import hatchingEggIcon from '../media/1-hatching.png';
 import demoHen2 from '../media/Layer 2.png';
 import demoHen3 from '../media/Layer 3.png';
 import demoHen4 from '../media/Layer 4.png';
@@ -86,7 +93,7 @@ const DEMO_COOPS: Record<string, string> = {
   'demo-coop-3': 'Henley-on-Coop',
 };
 
-const appearanceOptions: HenAppearance[] = ['Healthy', 'Broody', 'Fluffy', 'Moulting', 'Speckled', 'Scruffy'];
+const appearanceOptions: HenAppearance[] = ['Healthy', 'Unhealthy', 'Broody', 'Fluffy', 'Moulting', 'Speckled', 'Scruffy'];
 const coopTypes: Location['type'][] = ['Garden', 'Allotment', 'Other'];
 const calendarFilters: { key: CalendarFilter; label: string; icon: ReactNode }[] = [
   { key: 'eggs', label: 'Eggs', icon: <Egg size={14} /> },
@@ -98,6 +105,21 @@ const calendarFilters: { key: CalendarFilter; label: string; icon: ReactNode }[]
 const recentCutoff = (days: number) => subDays(new Date(), days - 1);
 const withinLastDays = (date: string, days: number) => parseISO(date) >= recentCutoff(days);
 const eggCupLabel = '🥚⋃';
+const saleTypeOptions: { value: SaleItemType; label: string }[] = [
+  { value: 'eggs', label: 'Eggs' },
+  { value: 'chicks', label: 'Chicks' },
+  { value: 'chickens', label: 'Chickens' },
+];
+
+const findGardenLocation = (locations: Location[]) => locations.find((location) => location.type === 'Garden' || /garden/i.test(location.name)) || locations[0];
+const getBatchEggImage = (count: number) => (count <= 1 ? singleEggIcon : count === 2 ? doubleEggIcon : tripleEggIcon);
+const getSaleLabel = (itemType?: SaleItemType, quantity?: number) => {
+  const type = itemType || 'eggs';
+  const count = quantity ?? 2;
+  if (type === 'chicks') return count === 1 ? 'chick sold' : 'chicks sold';
+  if (type === 'chickens') return count === 1 ? 'chicken sold' : 'chickens sold';
+  return count === 1 ? 'egg sold' : 'eggs sold';
+};
 
 export default function App() {
   const [user, setUser] = useState<SessionUser | null>(null);
@@ -235,13 +257,8 @@ export default function App() {
       <AuthShell>
         <form onSubmit={handleAuth} className="space-y-4">
           <div className="text-center space-y-3 mb-6">
-            <div className="w-24 h-24 bg-violet-600 rounded-[32px] flex items-center justify-center mx-auto shadow-xl shadow-violet-200 rotate-3">
-              <Egg size={48} className="text-white" />
-            </div>
-            <div>
-              <h1 className="text-5xl font-serif italic font-bold text-violet-900">The Eggcountant</h1>
-              <p className="text-violet-900/40 font-medium uppercase tracking-[0.2em] text-[10px] mt-2">Hostinger-friendly flock bookkeeping</p>
-            </div>
+            <img src={eggcountantLogo} alt="The Eggcountant" className="h-20 w-auto mx-auto object-contain" />
+            <p className="text-violet-900/40 font-medium uppercase tracking-[0.2em] text-[10px] mt-2">Hostinger-friendly flock bookkeeping</p>
           </div>
 
           {authMode === 'register' && (
@@ -283,21 +300,7 @@ export default function App() {
     <div className="min-h-screen bg-[#F8F7FF] text-violet-900 font-sans pb-32 relative overflow-x-hidden egg-art">
       <BackgroundArt />
 
-      <header className="bg-white/90 backdrop-blur border-b border-violet-100 p-4 sticky top-0 z-30 shadow-sm">
-        <div className="max-w-md mx-auto flex items-center justify-between gap-3">
-          <div>
-            <h1 className="text-[2.35rem] leading-none font-serif italic font-black tracking-tight">The Eggcountant</h1>
-            <p className="text-sm text-violet-900/55 max-w-[240px]">Here for the crack 🥚</p>
-          </div>
-          <button
-            onClick={() => setLogoutConfirmOpen(true)}
-            aria-label="Log out"
-            className="p-3 rounded-2xl text-violet-500 hover:text-rose-500 hover:bg-rose-50 transition-colors text-xl"
-          >
-            💥🥚
-          </button>
-        </div>
-      </header>
+      <AppHeader />
 
       <main className="max-w-md mx-auto p-4 space-y-4 relative z-10">
         {saveMessage && <div className="bg-emerald-50 text-emerald-700 px-4 py-3 rounded-2xl text-sm font-medium">{saveMessage}</div>}
@@ -341,6 +344,7 @@ export default function App() {
                 onDeleteFeed={(id) => remove('feedLogs', 'feedLogs', id)}
                 onSaveMedication={(item) => upsert('medicationLogs', 'medicationLogs', item)}
                 onDeleteMedication={(id) => remove('medicationLogs', 'medicationLogs', id)}
+                onLogout={() => setLogoutConfirmOpen(true)}
               />
             )}
             {activeTab === 'sales' && <SalesTracker saleLogs={saleLogs} onSave={(item) => upsert('saleLogs', 'saleLogs', item)} onDelete={(id) => remove('saleLogs', 'saleLogs', id)} />}
@@ -352,18 +356,18 @@ export default function App() {
       <button
         onClick={() => setLogSheetOpen(true)}
         aria-label="Log eggs"
-        className="fixed bottom-8 left-1/2 -translate-x-1/2 z-40 w-[88px] h-[112px] egg-fab bg-violet-600 text-white shadow-[0_18px_40px_rgba(124,58,237,0.35)] flex items-center justify-center border-4 border-[#F8F7FF]"
+        className="fixed bottom-14 left-1/2 -translate-x-1/2 z-40 w-[88px] h-[112px] egg-fab bg-violet-600 text-white shadow-[0_18px_40px_rgba(124,58,237,0.35)] flex items-center justify-center border-4 border-[#F8F7FF]"
       >
         <Egg size={38} />
       </button>
 
       <nav className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur border-t border-violet-100 px-4 pt-4 pb-3 z-20 shadow-[0_-4px_20px_rgba(124,58,237,0.05)]">
         <div className="max-w-md mx-auto grid grid-cols-5 items-end gap-1">
-          <NavButton icon={<House size={20} />} label="Home" active={activeTab === 'dashboard'} onClick={() => setActiveTab('dashboard')} />
-          <NavButton icon={<Bird size={20} />} label="Chicks" active={activeTab === 'chicks'} onClick={() => setActiveTab('chicks')} />
+          <NavButton icon={<House size={26} />} label="Home" active={activeTab === 'dashboard'} onClick={() => setActiveTab('dashboard')} />
+          <NavButton icon={<Bird size={26} />} label="Chicks" active={activeTab === 'chicks'} onClick={() => setActiveTab('chicks')} />
           <div className="h-14" />
-          <NavButton icon={<PoundSterling size={20} />} label="Sales" active={activeTab === 'sales'} onClick={() => setActiveTab('sales')} />
-          <NavButton icon={<Settings size={20} />} label="Settings" active={activeTab === 'settings'} onClick={() => setActiveTab('settings')} />
+          <NavButton icon={<PoundSterling size={26} />} label="Sales" active={activeTab === 'sales'} onClick={() => setActiveTab('sales')} />
+          <NavButton icon={<Settings size={26} />} label="Settings" active={activeTab === 'settings'} onClick={() => setActiveTab('settings')} />
         </div>
       </nav>
 
@@ -395,6 +399,16 @@ export default function App() {
 
       {splash && <LogSplash mode={splash.mode} />}
     </div>
+  );
+}
+
+function AppHeader() {
+  return (
+    <header className="bg-white/92 backdrop-blur border-b border-violet-100 p-4 sticky top-0 z-30 shadow-sm">
+      <div className="max-w-md mx-auto flex items-center justify-center">
+        <img src={eggcountantLogo} alt="The Eggcountant" className="h-14 w-auto object-contain" />
+      </div>
+    </header>
   );
 }
 
@@ -441,10 +455,10 @@ function Dashboard({
   return (
     <div className="space-y-4">
       <section className="grid grid-cols-2 gap-3">
-        <StatCard label="Latest Haul" value={latestLay} subtitle="Most recent lay" icon={<Egg size={16} className="text-violet-500" />} />
-        <StatCard label="Total Haul" value={totalEggs} subtitle="All eggs logged" icon={<Bird size={16} className="text-violet-500" />} />
-        <StatCard label="Total Sold" value={totalSold} subtitle="Eggs out the door" icon={<PoundSterling size={16} className="text-violet-500" />} />
-        <StatCard label="Profit-ish" value={`£${(revenue - costs).toFixed(2)}`} subtitle="Sales minus feed" icon={<TrendingUp size={16} className="text-violet-500" />} />
+        <StatCard label="LATEST CLUTCH" value={latestLay} icon={<img src={singleEggIcon} alt="" className="w-8 h-8 object-contain" />} />
+        <StatCard label="TOTAL HAUL" value={totalEggs} icon={<img src={eggCupIcon} alt="" className="w-8 h-8 object-contain" />} />
+        <StatCard label="TOTAL SOLD" value={totalSold} icon={<img src={friedEggIcon} alt="" className="w-8 h-8 object-contain" />} />
+        <StatCard label="PROFIT-ISH" value={`£${(revenue - costs).toFixed(2)}`} icon={<img src={hatchingEggIcon} alt="" className="w-8 h-8 object-contain" />} accent="net" />
       </section>
 
       <Card>
@@ -514,7 +528,7 @@ function Dashboard({
             <div key={log.id}><TimelineRow icon={<Stethoscope size={16} />} tone="bg-rose-50 text-rose-700" title={log.medicationName} subtitle={log.dosage} /></div>
           ))}
           {selectedIncubationStarts.map((batch) => (
-            <div key={batch.id}><TimelineRow icon={<Bird size={16} />} tone="bg-sky-50 text-sky-700" title={`Chicks started: ${batch.count} 🥚’s`} subtitle={`Expected hatch ${format(parseISO(batch.expectedHatchDate), 'd MMM')}`} /></div>
+            <div key={batch.id}><TimelineRow icon={<Bird size={16} />} tone="bg-sky-50 text-sky-700" title={`Chicks started: ${batch.count} eggs`} subtitle={`Expected hatch ${format(parseISO(batch.expectedHatchDate), 'd MMM')}`} /></div>
           ))}
           {selectedEggLogs.length === 0 && selectedSales.length === 0 && selectedFeed.length === 0 && selectedMeds.length === 0 && selectedIncubationStarts.length === 0 && (
             <EmptyState icon={<CalendarDays size={20} />} text="Quiet day. Suspiciously efficient." />
@@ -604,7 +618,7 @@ function CalendarCard({
     if (calendarFilter === 'eggs') return eggLogs.filter((log) => log.date.startsWith(key)).reduce((sum, log) => sum + log.count, 0);
     if (calendarFilter === 'sales') return saleLogs.filter((log) => log.date.startsWith(key)).length;
     if (calendarFilter === 'feed') return feedLogs.filter((log) => log.date.startsWith(key)).length + medicationLogs.filter((log) => log.date.startsWith(key)).length;
-    return chickBatches.filter((batch) => batch.dateStarted.startsWith(key)).length;
+    return chickBatches.filter((batch) => batch.dateStarted.startsWith(key)).reduce((sum, batch) => sum + batch.count, 0);
   };
 
   return (
@@ -667,13 +681,6 @@ function ChicksPage({
 
   return (
     <div className="space-y-4">
-      <Card>
-        <div className="space-y-1">
-          <h2 className="text-2xl font-serif italic font-bold">Chicks</h2>
-          <p className="text-sm text-violet-900/55">All the former Slow Cooker business lives here now. Much tidier.</p>
-        </div>
-      </Card>
-
       {sortedBatches.length === 0 ? (
         <Card><EmptyState icon={<Bird size={22} />} text="No incubation batches yet. Tap the big egg to start one." /></Card>
       ) : (
@@ -709,6 +716,7 @@ function SettingsPage({
   onDeleteFeed,
   onSaveMedication,
   onDeleteMedication,
+  onLogout,
 }: {
   mode: SettingsMode;
   setMode: (mode: SettingsMode) => void;
@@ -724,6 +732,7 @@ function SettingsPage({
   onDeleteFeed: (id: string) => Promise<void>;
   onSaveMedication: (item: MedicationLog) => Promise<void>;
   onDeleteMedication: (id: string) => Promise<void>;
+  onLogout: () => void;
 }) {
   const sections = [
     { key: 'birds' as const, label: 'Birds', icon: <Bird size={16} /> },
@@ -756,6 +765,8 @@ function SettingsPage({
           onDeleteMedication={onDeleteMedication}
         />
       )}
+
+      <button onClick={onLogout} className="w-full py-4 rounded-[28px] bg-rose-500 text-white font-bold shadow-sm">Log out</button>
     </div>
   );
 }
@@ -773,33 +784,44 @@ function BirdSettings({
 }) {
   const [editingHenId, setEditingHenId] = useState<string | null>(null);
   const [name, setName] = useState('');
-  const [locationId, setLocationId] = useState(locations[0]?.id || '');
+  const [locationId, setLocationId] = useState(findGardenLocation(locations)?.id || '');
   const [photoUrl, setPhotoUrl] = useState('');
   const [status, setStatus] = useState<HenAppearance>('Healthy');
+  const [savedFlash, setSavedFlash] = useState(false);
   const demoMode = hens.length === 0;
   const displayHens = demoMode ? DEMO_HENS : hens;
 
   useEffect(() => {
-    if (!locationId && locations[0]) setLocationId(locations[0].id);
+    if (!locationId && locations.length) setLocationId(findGardenLocation(locations)?.id || locations[0].id);
   }, [locationId, locations]);
+
+  useEffect(() => {
+    if (!savedFlash) return;
+    const timer = window.setTimeout(() => setSavedFlash(false), 1200);
+    return () => window.clearTimeout(timer);
+  }, [savedFlash]);
 
   const resetHenForm = () => {
     setEditingHenId(null);
     setName('');
     setPhotoUrl('');
     setStatus('Healthy');
+    setLocationId(findGardenLocation(locations)?.id || locations[0]?.id || '');
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 relative">
       <Card>
-        <div className="space-y-4">
-          <div className="flex items-start justify-between gap-3">
+        <div className="space-y-4 relative">
+          <div className="flex items-start justify-between gap-3 pr-20">
             <div>
               <h2 className="text-2xl font-serif italic font-bold">Add a Little Clucker</h2>
-              <p className="text-sm text-violet-900/50">Total birds: {hens.length}</p>
             </div>
             {editingHenId && <button onClick={resetHenForm} className="text-xs font-bold px-3 py-2 rounded-xl bg-violet-50 text-violet-600">Cancel edit</button>}
+          </div>
+          <div className="absolute top-0 right-0 inline-flex items-center gap-2 rounded-full bg-violet-50 px-3 py-2 text-violet-700 border border-violet-100">
+            <img src={hatchingEggIcon} alt="" className="w-5 h-5 object-contain" />
+            <span className="text-xs font-black">{hens.length}</span>
           </div>
           {locations.length === 0 ? (
             <div className="rounded-2xl bg-amber-50 text-amber-800 px-4 py-3 text-sm">Add a coop first, then your little cluckers can move in.</div>
@@ -813,11 +835,14 @@ function BirdSettings({
                 if (!name.trim() || !locationId) return;
                 await onSaveHen({ id: editingHenId || crypto.randomUUID(), name: name.trim(), locationId, status, photoUrl: photoUrl || undefined });
                 resetHenForm();
+                setSavedFlash(true);
               }} className="w-full py-4 bg-violet-600 text-white rounded-2xl font-bold">{editingHenId ? 'Save bird' : "Let's Cluckin' Go!"}</button>
             </>
           )}
         </div>
       </Card>
+
+      {savedFlash && <InlineSuccessSplash title="Bird saved" subtitle="Back to the flock." icon={<Bird size={30} />} />}
 
       {demoMode && (
         <Card className="p-4 bg-violet-50/70 border-violet-200">
@@ -863,6 +888,13 @@ function CoopSettings({ locations, onSaveLocation, onDeleteLocation }: { locatio
   const [name, setName] = useState('');
   const [type, setType] = useState<Location['type']>('Garden');
   const [photoUrl, setPhotoUrl] = useState('');
+  const [savedFlash, setSavedFlash] = useState(false);
+
+  useEffect(() => {
+    if (!savedFlash) return;
+    const timer = window.setTimeout(() => setSavedFlash(false), 1200);
+    return () => window.clearTimeout(timer);
+  }, [savedFlash]);
 
   const reset = () => {
     setEditingId(null);
@@ -872,7 +904,7 @@ function CoopSettings({ locations, onSaveLocation, onDeleteLocation }: { locatio
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 relative">
       <Card>
         <div className="space-y-4">
           <div className="flex items-start justify-between gap-3">
@@ -891,9 +923,12 @@ function CoopSettings({ locations, onSaveLocation, onDeleteLocation }: { locatio
             if (!name.trim()) return;
             await onSaveLocation({ id: editingId || crypto.randomUUID(), name: name.trim(), type, photoUrl: photoUrl || undefined });
             reset();
+            setSavedFlash(true);
           }} className="w-full py-4 bg-violet-600 text-white rounded-2xl font-bold">{editingId ? 'Save coop' : 'Add coop'}</button>
         </div>
       </Card>
+
+      {savedFlash && <InlineSuccessSplash title="Coop saved" subtitle="Nest sorted." icon={<MapPin size={30} />} />}
 
       <div className="grid grid-cols-2 gap-3">
         {locations.map((location) => (
@@ -945,13 +980,14 @@ function FeedAndMedTracker({
   const [weight, setWeight] = useState('');
   const [feedType, setFeedType] = useState('');
   const [feedDate, setFeedDate] = useState(format(new Date(), 'yyyy-MM-dd'));
-  const [feedLocationId, setFeedLocationId] = useState(locations[0]?.id || '');
+  const [feedLocationId, setFeedLocationId] = useState(findGardenLocation(locations)?.id || '');
   const [editingMedId, setEditingMedId] = useState<string | null>(null);
   const [medicationName, setMedicationName] = useState('');
   const [dosage, setDosage] = useState('');
   const [medHenId, setMedHenId] = useState('');
-  const [medLocationId, setMedLocationId] = useState(locations[0]?.id || '');
+  const [medLocationId, setMedLocationId] = useState(findGardenLocation(locations)?.id || '');
   const [medDate, setMedDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [savedFlash, setSavedFlash] = useState<null | 'feed' | 'med'>(null);
   const formRef = useRef<HTMLDivElement | null>(null);
   const recentFeedLogs = useMemo(() => feedLogs.filter((log) => withinLastDays(log.date, 14)), [feedLogs]);
 
@@ -973,12 +1009,19 @@ function FeedAndMedTracker({
   };
 
   useEffect(() => {
-    if (!feedLocationId && locations[0]) setFeedLocationId(locations[0].id);
-    if (!medLocationId && locations[0]) setMedLocationId(locations[0].id);
+    if (!feedLocationId && locations.length) setFeedLocationId(findGardenLocation(locations)?.id || locations[0].id);
+    if (!medLocationId && locations.length) setMedLocationId(findGardenLocation(locations)?.id || locations[0].id);
   }, [feedLocationId, medLocationId, locations]);
 
+  useEffect(() => {
+    if (!savedFlash) return;
+    const timer = window.setTimeout(() => setSavedFlash(null), 1200);
+    return () => window.clearTimeout(timer);
+  }, [savedFlash]);
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 relative">
+      {savedFlash && <InlineSuccessSplash title={savedFlash === 'feed' ? 'Feed saved' : 'Medication saved'} subtitle="Nice and tidy." icon={savedFlash === 'feed' ? <Wheat size={30} /> : <Stethoscope size={30} />} />}
       <div className="flex bg-white p-1 rounded-2xl border border-violet-100 shadow-sm">
         <button onClick={() => setMode('feed')} className={`flex-1 py-3 rounded-xl text-sm font-bold ${mode === 'feed' ? 'bg-violet-600 text-white' : 'text-violet-900/40'}`}>Chow</button>
         <button onClick={() => setMode('med')} className={`flex-1 py-3 rounded-xl text-sm font-bold ${mode === 'med' ? 'bg-violet-600 text-white' : 'text-violet-900/40'}`}>Medication</button>
@@ -1010,6 +1053,7 @@ function FeedAndMedTracker({
                     locationId: feedLocationId,
                   });
                   resetFeed();
+                  setSavedFlash('feed');
                 }} className="w-full py-4 bg-violet-600 text-white rounded-2xl font-bold">{editingFeedId ? 'Save chow log' : 'Log chow purchase'}</button>
               </div>
             </Card>
@@ -1032,6 +1076,7 @@ function FeedAndMedTracker({
                 if (!medicationName || !dosage || !medLocationId) return;
                 await onSaveMedication({ id: editingMedId || crypto.randomUUID(), date: new Date(medDate).toISOString(), medicationName, dosage, locationId: medLocationId, henId: medHenId || undefined });
                 resetMed();
+                setSavedFlash('med');
               }} className="w-full py-4 bg-violet-600 text-white rounded-2xl font-bold">Log medication</button>
             </div>
           </Card>
@@ -1047,34 +1092,46 @@ function SalesTracker({ saleLogs, onSave, onDelete }: { saleLogs: SaleLog[]; onS
   const [quantity, setQuantity] = useState(6);
   const [price, setPrice] = useState('');
   const [date, setDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [itemType, setItemType] = useState<SaleItemType>('eggs');
+  const [savedSplash, setSavedSplash] = useState(false);
   const recentSales = useMemo(() => saleLogs.filter((log) => withinLastDays(log.date, 14)), [saleLogs]);
+
+  useEffect(() => {
+    if (!savedSplash) return;
+    const timer = window.setTimeout(() => setSavedSplash(false), 1200);
+    return () => window.clearTimeout(timer);
+  }, [savedSplash]);
 
   const reset = () => {
     setEditingId(null);
     setQuantity(6);
     setPrice('');
     setDate(format(new Date(), 'yyyy-MM-dd'));
+    setItemType('eggs');
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 relative">
+      {savedSplash && <InlineSuccessSplash title="Sale logged" subtitle="Cluck n Load complete." icon={<PoundSterling size={30} />} />}
       <Card>
         <div className="space-y-4">
           <div className="flex items-center justify-between gap-3">
             <h2 className="text-2xl font-serif italic font-bold">Record a sale</h2>
             {editingId && <button onClick={reset} className="text-xs font-bold px-3 py-2 rounded-xl bg-violet-50 text-violet-600">Cancel edit</button>}
           </div>
-          <Field label="Quantity"><Stepper value={quantity} onChange={setQuantity} min={1} max={120} /></Field>
-          <Field label="Price (£)"><input type="number" value={price} onChange={(e) => setPrice(e.target.value)} className={inputClass} /></Field>
+          <Field label="What was sold"><Select value={itemType} onChange={(e) => setItemType(e.target.value as SaleItemType)}>{saleTypeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</Select></Field>
+          <Field label="Units sold"><Stepper value={quantity} onChange={setQuantity} min={1} max={120} /></Field>
+          <Field label="Total price (£)"><input type="number" value={price} onChange={(e) => setPrice(e.target.value)} className={inputClass} /></Field>
           <Field label="Date"><DateButton value={date} onChange={setDate} /></Field>
           <button onClick={async () => {
             if (!price) return;
-            await onSave({ id: editingId || crypto.randomUUID(), quantity, price: Number(price), date: new Date(date).toISOString() });
+            await onSave({ id: editingId || crypto.randomUUID(), quantity, price: Number(price), date: new Date(date).toISOString(), itemType });
             reset();
+            setSavedSplash(true);
           }} className="w-full py-4 bg-violet-600 text-white rounded-2xl font-bold">{editingId ? 'Save sale' : 'Cluck n Load'}</button>
         </div>
       </Card>
-      <div className="space-y-3">{recentSales.map((log) => <Card key={log.id}><div className="flex justify-between gap-3"><div><p className="font-bold">{log.quantity} eggs sold</p><p className="text-xs text-violet-900/45">{format(parseISO(log.date), 'd MMM yyyy')}</p></div><div className="flex items-start gap-2"><div className="font-serif italic font-bold text-violet-600">£{log.price.toFixed(2)}</div><button onClick={() => { setEditingId(log.id); setQuantity(log.quantity); setPrice(String(log.price)); setDate(format(parseISO(log.date), 'yyyy-MM-dd')); }} className="p-2 rounded-xl bg-violet-50 text-violet-600"><Pencil size={14} /></button><button onClick={() => onDelete(log.id)} className="p-2 rounded-xl bg-rose-50 text-rose-500"><Trash2 size={14} /></button></div></div></Card>)}</div>
+      <div className="space-y-3">{recentSales.map((log) => <Card key={log.id}><div className="flex justify-between gap-3"><div><p className="font-bold">{log.quantity} {getSaleLabel(log.itemType, log.quantity)}</p><p className="text-xs text-violet-900/45">{format(parseISO(log.date), 'd MMM yyyy')}</p></div><div className="flex items-start gap-2"><div className="font-serif italic font-bold text-violet-600">£{log.price.toFixed(2)}</div><button onClick={() => { setEditingId(log.id); setQuantity(log.quantity); setPrice(String(log.price)); setDate(format(parseISO(log.date), 'yyyy-MM-dd')); setItemType(log.itemType || 'eggs'); }} className="p-2 rounded-xl bg-violet-50 text-violet-600"><Pencil size={14} /></button><button onClick={() => onDelete(log.id)} className="p-2 rounded-xl bg-rose-50 text-rose-500"><Trash2 size={14} /></button></div></div></Card>)}</div>
     </div>
   );
 }
@@ -1131,32 +1188,40 @@ function LogSheet({
 }) {
   const [mode, setMode] = useState<LogMode>(defaultMode);
   const [count, setCount] = useState(defaultMode === 'breed' ? 6 : 3);
-  const [locationId, setLocationId] = useState(locations[0]?.id || '');
+  const [locationId, setLocationId] = useState(findGardenLocation(locations)?.id || '');
   const [date, setDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [expectedHatchDate, setExpectedHatchDate] = useState(format(addDays(new Date(), 21), 'yyyy-MM-dd'));
   const [temperature, setTemperature] = useState<number | ''>('');
 
   useEffect(() => {
-    if (!locationId && locations[0]) setLocationId(locations[0].id);
+    if (!locationId && locations.length) setLocationId(findGardenLocation(locations)?.id || locations[0].id);
   }, [locationId, locations]);
+
+  useEffect(() => {
+    if (mode === 'breed') setExpectedHatchDate(format(addDays(new Date(date), 21), 'yyyy-MM-dd'));
+  }, [date, mode]);
+
+  const isBreed = mode === 'breed';
 
   return (
     <div className="fixed inset-0 bg-violet-950/30 z-50 flex items-end justify-center px-3 pt-10 pb-6">
       <div className="w-full max-w-md bg-white rounded-[32px] p-5 space-y-4 shadow-2xl max-h-[82vh] overflow-y-auto">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-2xl font-serif italic font-bold">Log today</h2>
-            <p className="text-sm text-violet-900/50">Pick eggs or chicks and get on with it.</p>
+            <h2 className="text-2xl font-serif italic font-bold">{isBreed ? 'Log Eggs and Chicks' : 'Log eggs'}</h2>
+            {!isBreed && <p className="text-sm text-violet-900/50">Pick eggs or chicks and get on with it.</p>}
           </div>
           <button onClick={onClose} className="p-2 rounded-xl bg-violet-50 text-violet-600"><X size={18} /></button>
         </div>
         <div className="grid grid-cols-2 gap-2">
-          <button aria-label="Produce mode" onClick={() => setMode('produce')} className={`py-3 rounded-2xl font-bold border flex items-center justify-center text-2xl ${mode === 'produce' ? 'bg-violet-600 text-white border-violet-600' : 'bg-violet-50 text-violet-700 border-violet-100'}`}>🍳</button>
-          <button aria-label="Breed mode" onClick={() => setMode('breed')} className={`py-3 rounded-2xl font-bold border flex items-center justify-center text-2xl ${mode === 'breed' ? 'bg-violet-600 text-white border-violet-600' : 'bg-violet-50 text-violet-700 border-violet-100'}`}>🐥</button>
+          <button aria-label="Produce mode" onClick={() => setMode('produce')} className={`py-3 rounded-2xl font-bold border flex items-center justify-center ${mode === 'produce' ? 'bg-violet-600 text-white border-violet-600' : 'bg-violet-50 text-violet-700 border-violet-100'}`}><img src={friedEggIcon} alt="" className="w-10 h-10 object-contain" /></button>
+          <button aria-label="Breed mode" onClick={() => setMode('breed')} className={`py-3 rounded-2xl font-bold border flex items-center justify-center ${mode === 'breed' ? 'bg-violet-600 text-white border-violet-600' : 'bg-violet-50 text-violet-700 border-violet-100'}`}><img src={hatchingEggIcon} alt="" className="w-10 h-10 object-contain" /></button>
         </div>
-        <Field label={mode === 'breed' ? 'Egg count for incubation' : 'Egg count'}><Stepper value={count} onChange={setCount} min={1} max={48} /></Field>
+        <Field label="Egg count"><Stepper value={count} onChange={setCount} min={1} max={48} /></Field>
         <Field label="Date"><DateButton value={date} onChange={setDate} /></Field>
+        {isBreed && <Field label="Anticipated hatch date"><DateButton value={expectedHatchDate} onChange={setExpectedHatchDate} /></Field>}
         <Field label="Coop"><Select value={locationId} onChange={(e) => setLocationId(e.target.value)}>{locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</Select></Field>
-        {mode === 'produce' && (
+        {isBreed && (
           <Field label="Coop temperature (optional °C)">
             <div className="flex items-center gap-2">
               {[18, 20, 22, 24].map((preset) => <button key={preset} type="button" onClick={() => setTemperature(preset)} className={`px-3 py-2 rounded-xl text-sm font-bold ${temperature === preset ? 'bg-violet-600 text-white' : 'bg-violet-50 text-violet-700'}`}>{preset}°</button>)}
@@ -1167,13 +1232,13 @@ function LogSheet({
         <button
           disabled={!locationId || count < 1}
           onClick={async () => {
-            if (mode === 'breed') {
+            if (isBreed) {
               const started = new Date(date);
               await onSaveBatch({
                 id: crypto.randomUUID(),
                 count,
                 dateStarted: started.toISOString(),
-                expectedHatchDate: addDays(started, 21).toISOString(),
+                expectedHatchDate: new Date(expectedHatchDate).toISOString(),
                 locationId,
                 status: 'Incubating',
                 chicks: [],
@@ -1182,11 +1247,11 @@ function LogSheet({
               });
               return;
             }
-            await onSaveEgg({ id: crypto.randomUUID(), count, locationId, date: new Date(date).toISOString(), mode, coopTemperature: typeof temperature === 'number' ? temperature : undefined }, mode);
+            await onSaveEgg({ id: crypto.randomUUID(), count, locationId, date: new Date(date).toISOString(), mode, coopTemperature: undefined }, mode);
           }}
           className="w-full py-4 bg-violet-600 text-white rounded-3xl font-bold disabled:opacity-40"
         >
-          {mode === 'breed' ? 'Start breeding batch' : 'Save collection'}
+          {isBreed ? 'Start breeding batch' : 'Save collection'}
         </button>
       </div>
     </div>
@@ -1198,7 +1263,7 @@ function LogSplash({ mode }: { mode: LogMode }) {
     <div className="fixed inset-0 bg-[#F8F7FF]/95 z-[70] flex items-center justify-center">
       <div className="text-center space-y-4">
         <div className="w-24 h-24 rounded-full bg-white shadow-xl flex items-center justify-center mx-auto text-violet-600">
-          {mode === 'produce' ? <span className="text-5xl">🍳</span> : <span className="text-5xl">🐥</span>}
+          <img src={mode === 'produce' ? friedEggIcon : hatchingEggIcon} alt="" className="w-14 h-14 object-contain" />
         </div>
         <div>
           <h3 className="text-2xl font-serif italic font-bold">{mode === 'produce' ? 'Eggs logged' : 'Incubation started'}</h3>
@@ -1241,6 +1306,7 @@ function EditableChickBatchTile({
   const daysDone = Math.max(0, Math.min(totalDays, differenceInCalendarDays(new Date(), parseISO(batch.dateStarted))));
   const percent = Math.max(0, Math.min(100, (daysDone / totalDays) * 100));
   const daysLeft = Math.max(0, differenceInCalendarDays(parseISO(batch.expectedHatchDate), new Date()));
+  const eggImage = getBatchEggImage(batch.count);
 
   useEffect(() => {
     setHatchedCount(batch.hatchedCount && batch.hatchedCount > 0 ? batch.hatchedCount : batch.count);
@@ -1260,12 +1326,16 @@ function EditableChickBatchTile({
 
   return (
     <Card className="p-4">
-      <div className="space-y-3">
+      <div className="space-y-4">
         <div className="flex justify-between items-start gap-4">
-          <div>
-            <p className="font-bold text-lg">{batch.count} 🥚’s</p>
-            <p className="text-xs text-violet-900/45">Started {format(parseISO(batch.dateStarted), 'd MMM yyyy')}{locationName ? ` • ${locationName}` : ''}</p>
-            <p className="text-[10px] mt-2 uppercase tracking-widest text-violet-600 font-bold">{batch.status}</p>
+          <div className="flex items-start gap-3">
+            <img src={eggImage} alt="" className="w-14 h-14 object-contain shrink-0" />
+            <div>
+              <p className="text-4xl leading-none font-black text-violet-700">{batch.count}</p>
+              <p className="font-bold text-sm uppercase tracking-[0.2em] text-violet-900/45 mt-1">Egg batch</p>
+              <p className="text-xs text-violet-900/45 mt-2">Started {format(parseISO(batch.dateStarted), 'd MMM yyyy')}{locationName ? ` • ${locationName}` : ''}</p>
+              <p className="text-[10px] mt-2 uppercase tracking-widest text-violet-600 font-bold">{batch.status}</p>
+            </div>
           </div>
           <div className="flex gap-1 shrink-0">
             <button onClick={() => setEditing((current) => !current)} className="p-2 rounded-xl bg-violet-50 text-violet-600"><Pencil size={14} /></button>
@@ -1273,12 +1343,12 @@ function EditableChickBatchTile({
           </div>
         </div>
         <div className="flex items-center gap-3 text-violet-500">
-          <span className="text-lg">🥚</span>
+          <img src={eggImage} alt="" className="w-8 h-8 object-contain" />
           <div className="flex-1">
             <div className="h-2 rounded-full bg-violet-100 overflow-hidden"><div className="h-full bg-gradient-to-r from-amber-300 to-violet-500 rounded-full" style={{ width: `${percent}%` }} /></div>
           </div>
           <div className="text-right min-w-[84px] ml-auto">
-            <div className="text-lg">🐥</div>
+            <img src={hatchingEggIcon} alt="" className="w-7 h-7 object-contain ml-auto" />
             <p className="text-xs text-violet-900/55">{daysLeft === 0 ? 'Hatch window' : `${daysLeft} day${daysLeft === 1 ? '' : 's'} left`}</p>
           </div>
         </div>
@@ -1339,17 +1409,17 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
   return <label className="block space-y-2"><span className="text-xs font-bold uppercase tracking-widest text-violet-900/40 px-1">{label}</span>{children}</label>;
 }
 
-function StatCard({ label, value, subtitle, icon }: { label: string; value: string | number; subtitle?: string; icon: ReactNode }) {
+function StatCard({ label, value, icon, accent }: { label: string; value: string | number; icon: ReactNode; accent?: string }) {
   return (
-    <Card className="p-4 min-h-[112px]">
-      <div className="flex justify-between items-start gap-3">
-        <div>
-          <span className="text-[10px] uppercase tracking-widest font-bold text-violet-900/40">{label}</span>
-          {subtitle && <p className="text-xs text-violet-900/45 mt-1 leading-snug">{subtitle}</p>}
+    <Card className="p-4 min-h-[132px] bg-[#FCFBFF] border-[#ECE7FF]">
+      <div className="flex h-full flex-col">
+        <div className="flex items-start justify-between gap-3">
+          <span className="text-[10px] uppercase tracking-[0.24em] font-black text-violet-900/35">{label}</span>
+          {accent ? <span className="text-[10px] uppercase tracking-[0.24em] font-black text-violet-400">{accent}</span> : <span />}
         </div>
-        <div className="p-2 bg-violet-50 rounded-xl shrink-0">{icon}</div>
+        <div className="mt-4 text-[2rem] font-black leading-none text-violet-700">{value}</div>
+        <div className="mt-auto flex justify-end pt-5 opacity-95">{icon}</div>
       </div>
-      <div className="text-[1.65rem] font-serif italic font-bold mt-4 leading-none">{value}</div>
     </Card>
   );
 }
@@ -1376,6 +1446,20 @@ function EmptyState({ icon, text }: { icon: ReactNode; text: string }) {
 
 function FullscreenMessage({ icon, title, subtitle }: { icon: ReactNode; title: string; subtitle: string }) {
   return <div className="min-h-screen bg-violet-50 flex items-center justify-center"><div className="text-center space-y-3 text-violet-600"><div className="mx-auto w-16 h-16 bg-white rounded-full flex items-center justify-center shadow-sm">{icon}</div><h2 className="text-2xl font-serif italic font-bold">{title}</h2><p className="text-violet-900/45">{subtitle}</p></div></div>;
+}
+
+function InlineSuccessSplash({ title, subtitle, icon }: { title: string; subtitle: string; icon: ReactNode }) {
+  return (
+    <div className="absolute inset-0 z-20 rounded-[32px] bg-[#F8F7FF]/94 flex items-center justify-center p-6 text-center">
+      <div className="space-y-3">
+        <div className="mx-auto w-16 h-16 rounded-full bg-white shadow-sm text-violet-600 flex items-center justify-center">{icon}</div>
+        <div>
+          <h3 className="text-xl font-serif italic font-bold text-violet-700">{title}</h3>
+          <p className="text-sm text-violet-900/55">{subtitle}</p>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function ImagePicker({ value, onChange }: { value: string; onChange: (value: string) => void }) {

@@ -17,7 +17,7 @@ export type EggLog = {
   coopTemperature?: number;
 };
 
-export type HenAppearance = 'Healthy' | 'Broody' | 'Fluffy' | 'Moulting' | 'Speckled' | 'Scruffy';
+export type HenAppearance = 'Healthy' | 'Unhealthy' | 'Broody' | 'Fluffy' | 'Moulting' | 'Speckled' | 'Scruffy';
 
 export type Hen = {
   id: string;
@@ -50,11 +50,14 @@ export type MedicationLog = {
   notes?: string;
 };
 
+export type SaleItemType = 'eggs' | 'chicks' | 'chickens';
+
 export type SaleLog = {
   id: string;
   date: string;
   quantity: number;
   price: number;
+  itemType?: SaleItemType;
   notes?: string;
 };
 
