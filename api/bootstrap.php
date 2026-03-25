@@ -372,10 +372,22 @@ function related_identifier_columns(string $table): array {
     $base = ['uuid', 'app_id', 'appId', 'external_id', 'externalId', 'record_id', 'recordId', 'id'];
 
     return match ($table) {
-        'coops' => array_merge(['coop_id', 'location_id', 'locationId'], $base),
-        'birds' => array_merge(['bird_id', 'hen_id', 'henId'], $base),
+        'coops' => array_merge(['coop_id', 'coopId', 'location_id', 'locationId'], $base),
+        'birds' => array_merge(['bird_id', 'birdId', 'hen_id', 'henId'], $base),
         default => $base,
     };
+}
+
+function app_owned_identifier_values(?string $id): array {
+    return [
+        'uuid' => $id,
+        'app_id' => $id,
+        'appId' => $id,
+        'external_id' => $id,
+        'externalId' => $id,
+        'record_id' => $id,
+        'recordId' => $id,
+    ];
 }
 
 function identifier_candidates_from_row(string $table, array $row): array {
@@ -972,16 +984,11 @@ function map_coop_row_to_record(array $row): array {
 
 function upsert_coop(string $userId, array $item): void {
     persist_row('coops', (string) $item['id'], $userId, array_filter([
-        'uuid' => $item['id'] ?? null,
+        ...app_owned_identifier_values($item['id'] ?? null),
         'coop_id' => $item['id'] ?? null,
+        'coopId' => $item['id'] ?? null,
         'location_id' => $item['id'] ?? null,
         'locationId' => $item['id'] ?? null,
-        'app_id' => $item['id'] ?? null,
-        'appId' => $item['id'] ?? null,
-        'external_id' => $item['id'] ?? null,
-        'externalId' => $item['id'] ?? null,
-        'record_id' => $item['id'] ?? null,
-        'recordId' => $item['id'] ?? null,
         'name' => $item['name'] ?? null,
         'coop_name' => $item['name'] ?? null,
         'type' => $item['type'] ?? null,
@@ -1001,10 +1008,10 @@ function fetch_birds(string $userId): array {
 function map_bird_row_to_record(array $row): array {
     $payload = payload_for_table_row('birds', $row);
     return [
-        'id' => (string) ($payload['id'] ?? column_value($row, ['uuid', 'id'], '')),
+        'id' => app_record_id_from_row('birds', $row),
         'name' => (string) column_value($row, ['name'], $payload['name'] ?? ''),
         'breed' => column_value($row, ['breed'], $payload['breed'] ?? null),
-        'locationId' => (string) ($payload['locationId'] ?? related_record_app_id_from_foreign_value('coops', (string) column_value($row, ['user_id', 'userId', 'account_id', 'owner_id'], ''), column_value($row, ['coop_id', 'location_id', 'locationId'], ''))),
+        'locationId' => (string) (related_input_value($payload, ['locationId', 'coopId', 'location_id', 'coop_id']) ?? related_record_app_id_from_foreign_value('coops', (string) column_value($row, ['user_id', 'userId', 'account_id', 'owner_id'], ''), column_value($row, ['coop_id', 'coopId', 'location_id', 'locationId'], ''))),
         'status' => (string) column_value($row, ['status', 'appearance'], $payload['status'] ?? 'Healthy'),
         'photoUrl' => column_value($row, ['photo_url', 'photoUrl', 'image_url', 'imageUrl'], $payload['photoUrl'] ?? null),
         'notes' => column_value($row, ['notes'], $payload['notes'] ?? null),
@@ -1012,12 +1019,16 @@ function map_bird_row_to_record(array $row): array {
 }
 
 function upsert_bird(string $userId, array $item): void {
+    $locationId = related_input_value($item, ['locationId', 'coopId', 'location_id', 'coop_id']);
+
     persist_row('birds', (string) $item['id'], $userId, array_filter([
+        ...app_owned_identifier_values($item['id'] ?? null),
         'name' => $item['name'] ?? null,
         'breed' => $item['breed'] ?? null,
-        'coop_id' => foreign_identifier_value('birds', 'coop_id', 'coops', $userId, $item['locationId'] ?? null),
-        'location_id' => foreign_identifier_value('birds', 'location_id', 'coops', $userId, $item['locationId'] ?? null),
-        'locationId' => foreign_identifier_value('birds', 'locationId', 'coops', $userId, $item['locationId'] ?? null),
+        'coop_id' => foreign_identifier_value('birds', 'coop_id', 'coops', $userId, $locationId),
+        'coopId' => foreign_identifier_value('birds', 'coopId', 'coops', $userId, $locationId),
+        'location_id' => foreign_identifier_value('birds', 'location_id', 'coops', $userId, $locationId),
+        'locationId' => foreign_identifier_value('birds', 'locationId', 'coops', $userId, $locationId),
         'status' => $item['status'] ?? null,
         'appearance' => $item['status'] ?? null,
         'photo_url' => $item['photoUrl'] ?? null,
@@ -1036,10 +1047,10 @@ function fetch_egg_logs(string $userId): array {
 function map_egg_log_row_to_record(array $row): array {
     $payload = payload_for_table_row('egg_logs', $row);
     return [
-        'id' => (string) ($payload['id'] ?? column_value($row, ['uuid', 'id'], '')),
+        'id' => app_record_id_from_row('egg_logs', $row),
         'date' => iso_datetime((string) column_value($row, ['date', 'log_date', 'logged_at', 'logged_on'], $payload['date'] ?? '')),
         'count' => (int) column_value($row, ['count', 'egg_count', 'quantity'], $payload['count'] ?? 0),
-        'locationId' => (string) ($payload['locationId'] ?? related_record_app_id_from_foreign_value('coops', (string) column_value($row, ['user_id', 'userId', 'account_id', 'owner_id'], ''), column_value($row, ['coop_id', 'location_id', 'locationId'], ''))),
+        'locationId' => (string) (related_input_value($payload, ['locationId', 'coopId', 'location_id', 'coop_id']) ?? related_record_app_id_from_foreign_value('coops', (string) column_value($row, ['user_id', 'userId', 'account_id', 'owner_id'], ''), column_value($row, ['coop_id', 'coopId', 'location_id', 'locationId'], ''))),
         'notes' => column_value($row, ['notes'], $payload['notes'] ?? null),
         'mode' => column_value($row, ['mode'], $payload['mode'] ?? null),
         'coopTemperature' => column_value($row, ['coop_temperature', 'temperature', 'coopTemperature'], $payload['coopTemperature'] ?? null),
@@ -1047,7 +1058,10 @@ function map_egg_log_row_to_record(array $row): array {
 }
 
 function upsert_egg_log(string $userId, array $item): void {
+    $locationId = related_input_value($item, ['locationId', 'coopId', 'location_id', 'coop_id']);
+
     persist_row('egg_logs', (string) $item['id'], $userId, array_filter([
+        ...app_owned_identifier_values($item['id'] ?? null),
         'date' => $item['date'] ?? null,
         'log_date' => $item['date'] ?? null,
         'logged_at' => $item['date'] ?? null,
@@ -1055,9 +1069,10 @@ function upsert_egg_log(string $userId, array $item): void {
         'count' => $item['count'] ?? null,
         'egg_count' => $item['count'] ?? null,
         'quantity' => $item['count'] ?? null,
-        'coop_id' => foreign_identifier_value('egg_logs', 'coop_id', 'coops', $userId, $item['locationId'] ?? null),
-        'location_id' => foreign_identifier_value('egg_logs', 'location_id', 'coops', $userId, $item['locationId'] ?? null),
-        'locationId' => foreign_identifier_value('egg_logs', 'locationId', 'coops', $userId, $item['locationId'] ?? null),
+        'coop_id' => foreign_identifier_value('egg_logs', 'coop_id', 'coops', $userId, $locationId),
+        'coopId' => foreign_identifier_value('egg_logs', 'coopId', 'coops', $userId, $locationId),
+        'location_id' => foreign_identifier_value('egg_logs', 'location_id', 'coops', $userId, $locationId),
+        'locationId' => foreign_identifier_value('egg_logs', 'locationId', 'coops', $userId, $locationId),
         'notes' => $item['notes'] ?? null,
         'mode' => $item['mode'] ?? null,
         'coop_temperature' => $item['coopTemperature'] ?? null,
@@ -1089,10 +1104,10 @@ function map_feed_log_row_to_record(array $row, string $kind): array {
     $payload = payload_for_table_row('feed_logs', $row);
     if ($kind === 'medication') {
         return [
-            'id' => (string) ($payload['id'] ?? column_value($row, ['uuid', 'id'], '')),
+            'id' => app_record_id_from_row('feed_logs', $row),
             'date' => iso_datetime((string) column_value($row, ['date', 'log_date', 'feed_date', 'logged_at', 'logged_on'], $payload['date'] ?? '')),
-            'henId' => $payload['henId'] ?? related_record_app_id_from_foreign_value('birds', (string) column_value($row, ['user_id', 'userId', 'account_id', 'owner_id'], ''), column_value($row, ['bird_id', 'hen_id', 'henId'], null)),
-            'locationId' => (string) ($payload['locationId'] ?? related_record_app_id_from_foreign_value('coops', (string) column_value($row, ['user_id', 'userId', 'account_id', 'owner_id'], ''), column_value($row, ['coop_id', 'location_id', 'locationId'], ''))),
+            'henId' => related_input_value($payload, ['henId', 'birdId', 'hen_id', 'bird_id']) ?? related_record_app_id_from_foreign_value('birds', (string) column_value($row, ['user_id', 'userId', 'account_id', 'owner_id'], ''), column_value($row, ['bird_id', 'birdId', 'hen_id', 'henId'], null)),
+            'locationId' => (string) (related_input_value($payload, ['locationId', 'coopId', 'location_id', 'coop_id']) ?? related_record_app_id_from_foreign_value('coops', (string) column_value($row, ['user_id', 'userId', 'account_id', 'owner_id'], ''), column_value($row, ['coop_id', 'coopId', 'location_id', 'locationId'], ''))),
             'medicationName' => (string) column_value($row, ['medication_name', 'medicationName', 'name'], $payload['medicationName'] ?? ''),
             'dosage' => (string) column_value($row, ['dosage'], $payload['dosage'] ?? ''),
             'notes' => column_value($row, ['notes'], $payload['notes'] ?? null),
@@ -1100,13 +1115,13 @@ function map_feed_log_row_to_record(array $row, string $kind): array {
     }
 
     return [
-        'id' => (string) ($payload['id'] ?? column_value($row, ['uuid', 'id'], '')),
+        'id' => app_record_id_from_row('feed_logs', $row),
         'date' => iso_datetime((string) column_value($row, ['date', 'log_date', 'feed_date', 'logged_at', 'logged_on'], $payload['date'] ?? '')),
         'amount' => (int) column_value($row, ['amount', 'quantity'], $payload['amount'] ?? 0),
         'cost' => column_value($row, ['cost', 'price'], $payload['cost'] ?? null),
         'weight' => column_value($row, ['weight'], $payload['weight'] ?? null),
-        'feedType' => column_value($row, ['feed_type', 'feedType', 'type'], $payload['feedType'] ?? null),
-        'locationId' => (string) ($payload['locationId'] ?? related_record_app_id_from_foreign_value('coops', (string) column_value($row, ['user_id', 'userId', 'account_id', 'owner_id'], ''), column_value($row, ['coop_id', 'location_id', 'locationId'], ''))),
+        'feedType' => column_value($row, ['feed_type', 'feedType'], $payload['feedType'] ?? null),
+        'locationId' => (string) (related_input_value($payload, ['locationId', 'coopId', 'location_id', 'coop_id']) ?? related_record_app_id_from_foreign_value('coops', (string) column_value($row, ['user_id', 'userId', 'account_id', 'owner_id'], ''), column_value($row, ['coop_id', 'coopId', 'location_id', 'locationId'], ''))),
         'notes' => column_value($row, ['notes'], $payload['notes'] ?? null),
     ];
 }
@@ -1117,15 +1132,18 @@ function upsert_feed_log(string $userId, array $item, string $kind): void {
     }
 
     $typeColumn = first_existing_column('feed_logs', ['log_type', 'type', 'entry_type', 'kind', 'record_type', 'category']);
+    $locationId = related_input_value($item, ['locationId', 'coopId', 'location_id', 'coop_id']);
     $values = [
+        ...app_owned_identifier_values($item['id'] ?? null),
         'date' => $item['date'] ?? null,
         'log_date' => $item['date'] ?? null,
         'logged_at' => $item['date'] ?? null,
         'logged_on' => $item['date'] ?? null,
         'feed_date' => $item['date'] ?? null,
-        'coop_id' => foreign_identifier_value('feed_logs', 'coop_id', 'coops', $userId, $item['locationId'] ?? null),
-        'location_id' => foreign_identifier_value('feed_logs', 'location_id', 'coops', $userId, $item['locationId'] ?? null),
-        'locationId' => foreign_identifier_value('feed_logs', 'locationId', 'coops', $userId, $item['locationId'] ?? null),
+        'coop_id' => foreign_identifier_value('feed_logs', 'coop_id', 'coops', $userId, $locationId),
+        'coopId' => foreign_identifier_value('feed_logs', 'coopId', 'coops', $userId, $locationId),
+        'location_id' => foreign_identifier_value('feed_logs', 'location_id', 'coops', $userId, $locationId),
+        'locationId' => foreign_identifier_value('feed_logs', 'locationId', 'coops', $userId, $locationId),
         'notes' => $item['notes'] ?? null,
         payload_column('feed_logs') ?: '__skip_payload' => json_encode($item, JSON_UNESCAPED_SLASHES),
     ];
@@ -1133,6 +1151,7 @@ function upsert_feed_log(string $userId, array $item, string $kind): void {
     if ($kind === 'medication') {
         $values += [
             'bird_id' => foreign_identifier_value('feed_logs', 'bird_id', 'birds', $userId, $item['henId'] ?? null),
+            'birdId' => foreign_identifier_value('feed_logs', 'birdId', 'birds', $userId, $item['henId'] ?? null),
             'hen_id' => foreign_identifier_value('feed_logs', 'hen_id', 'birds', $userId, $item['henId'] ?? null),
             'henId' => foreign_identifier_value('feed_logs', 'henId', 'birds', $userId, $item['henId'] ?? null),
             'medication_name' => $item['medicationName'] ?? null,
@@ -1177,27 +1196,31 @@ function fetch_sales(string $userId): array {
 function map_sale_row_to_record(array $row): array {
     $payload = payload_for_table_row('sales', $row);
     return [
-        'id' => (string) ($payload['id'] ?? column_value($row, ['uuid', 'id'], '')),
+        'id' => app_record_id_from_row('sales', $row),
         'date' => iso_datetime((string) column_value($row, ['date', 'sale_date', 'sold_at', 'logged_at', 'log_date'], $payload['date'] ?? '')),
-        'quantity' => (int) column_value($row, ['quantity', 'count'], $payload['quantity'] ?? 0),
-        'price' => (float) column_value($row, ['price', 'amount', 'total'], $payload['price'] ?? 0),
-        'itemType' => column_value($row, ['item_type', 'itemType', 'type'], $payload['itemType'] ?? null),
+        'quantity' => (int) column_value($row, ['units_sold', 'quantity', 'count'], $payload['quantity'] ?? 0),
+        'price' => (float) column_value($row, ['total_price', 'price', 'amount', 'total'], $payload['price'] ?? 0),
+        'itemType' => column_value($row, ['sale_type', 'item_type', 'itemType', 'type'], $payload['itemType'] ?? null),
         'notes' => column_value($row, ['notes'], $payload['notes'] ?? null),
     ];
 }
 
 function upsert_sale(string $userId, array $item): void {
     persist_row('sales', (string) $item['id'], $userId, array_filter([
+        ...app_owned_identifier_values($item['id'] ?? null),
         'date' => $item['date'] ?? null,
         'sale_date' => $item['date'] ?? null,
         'sold_at' => $item['date'] ?? null,
         'logged_at' => $item['date'] ?? null,
         'log_date' => $item['date'] ?? null,
+        'units_sold' => $item['quantity'] ?? null,
         'quantity' => $item['quantity'] ?? null,
         'count' => $item['quantity'] ?? null,
+        'total_price' => $item['price'] ?? null,
         'price' => $item['price'] ?? null,
         'amount' => $item['price'] ?? null,
         'total' => $item['price'] ?? null,
+        'sale_type' => $item['itemType'] ?? null,
         'item_type' => $item['itemType'] ?? null,
         'itemType' => $item['itemType'] ?? null,
         'type' => $item['itemType'] ?? null,
@@ -1215,10 +1238,10 @@ function map_incubation_row_to_record(array $row): array {
     $chicksValue = column_value($row, ['chicks_json', 'chicks'], $payload['chicks'] ?? []);
     $chicks = is_array($chicksValue) ? $chicksValue : decode_json_value($chicksValue, []);
     $locationId = related_input_value($payload, ['locationId', 'coopId', 'location_id', 'coop_id'])
-        ?? related_record_app_id_from_foreign_value('coops', (string) column_value($row, ['user_id', 'userId', 'account_id', 'owner_id'], ''), column_value($row, ['coop_id', 'location_id', 'locationId'], ''));
+        ?? related_record_app_id_from_foreign_value('coops', (string) column_value($row, ['user_id', 'userId', 'account_id', 'owner_id'], ''), column_value($row, ['coop_id', 'coopId', 'location_id', 'locationId'], ''));
 
     return [
-        'id' => (string) ($payload['id'] ?? column_value($row, ['uuid', 'id'], '')),
+        'id' => app_record_id_from_row('incubation_batches', $row),
         'dateStarted' => iso_datetime((string) column_value($row, ['start_date', 'date_started', 'dateStarted', 'started_at'], $payload['dateStarted'] ?? '')),
         'expectedHatchDate' => iso_datetime((string) column_value($row, ['anticipated_hatch_date', 'expected_hatch_date', 'expectedHatchDate'], $payload['expectedHatchDate'] ?? '')),
         'hatchDate' => iso_datetime(column_value($row, ['hatch_date', 'hatchDate'], $payload['hatchDate'] ?? null)),
@@ -1237,6 +1260,7 @@ function upsert_incubation_batch(string $userId, array $item): void {
     $locationId = related_input_value($item, ['locationId', 'coopId', 'location_id', 'coop_id']);
 
     persist_row('incubation_batches', (string) $item['id'], $userId, array_filter([
+        ...app_owned_identifier_values($item['id'] ?? null),
         'start_date' => $item['dateStarted'] ?? null,
         'date_started' => $item['dateStarted'] ?? null,
         'dateStarted' => $item['dateStarted'] ?? null,
@@ -1251,6 +1275,7 @@ function upsert_incubation_batch(string $userId, array $item): void {
         'quantity' => $item['count'] ?? null,
         'status' => $item['status'] ?? null,
         'coop_id' => foreign_identifier_value('incubation_batches', 'coop_id', 'coops', $userId, $locationId),
+        'coopId' => foreign_identifier_value('incubation_batches', 'coopId', 'coops', $userId, $locationId),
         'location_id' => foreign_identifier_value('incubation_batches', 'location_id', 'coops', $userId, $locationId),
         'locationId' => foreign_identifier_value('incubation_batches', 'locationId', 'coops', $userId, $locationId),
         'notes' => $item['notes'] ?? null,
