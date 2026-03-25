@@ -19,7 +19,6 @@ import {
   ChevronDown,
   Egg,
   House,
-  LogOut,
   MapPin,
   Pencil,
   PoundSterling,
@@ -29,6 +28,7 @@ import {
   Trash2,
   TrendingUp,
   Utensils,
+  Wheat,
   X,
 } from 'lucide-react';
 import { authApi, dataApi, SessionUser } from './api';
@@ -43,10 +43,11 @@ import demoHen7 from '../media/Layer 7.png';
 import demoHen8 from '../media/Layer 8.png';
 import demoHen9 from '../media/Layer 9.png';
 
-type TabKey = 'dashboard' | 'settings' | 'sales' | 'wiki';
+type TabKey = 'dashboard' | 'chicks' | 'settings' | 'sales' | 'wiki';
 type SettingsMode = 'birds' | 'coops' | 'feed';
 type LogMode = EggLogMode;
-type CalendarFilter = 'eggs' | 'sales' | 'care' | 'chicks';
+type CalendarFilter = 'eggs' | 'chicks' | 'sales' | 'feed';
+type CalendarRange = '7' | '14' | 'month';
 
 type AppState = {
   locations: Location[];
@@ -85,15 +86,18 @@ const DEMO_COOPS: Record<string, string> = {
   'demo-coop-3': 'Henley-on-Coop',
 };
 
-
 const appearanceOptions: HenAppearance[] = ['Healthy', 'Broody', 'Fluffy', 'Moulting', 'Speckled', 'Scruffy'];
 const coopTypes: Location['type'][] = ['Garden', 'Allotment', 'Other'];
 const calendarFilters: { key: CalendarFilter; label: string; icon: ReactNode }[] = [
   { key: 'eggs', label: 'Eggs', icon: <Egg size={14} /> },
-  { key: 'sales', label: 'Sales', icon: <PoundSterling size={14} /> },
-  { key: 'care', label: 'Feed + Meds', icon: <Utensils size={14} /> },
   { key: 'chicks', label: 'Chicks', icon: <Bird size={14} /> },
+  { key: 'sales', label: 'Sales', icon: <PoundSterling size={14} /> },
+  { key: 'feed', label: 'Feed', icon: <Wheat size={14} /> },
 ];
+
+const recentCutoff = (days: number) => subDays(new Date(), days - 1);
+const withinLastDays = (date: string, days: number) => parseISO(date) >= recentCutoff(days);
+const eggCupLabel = '🥚⋃';
 
 export default function App() {
   const [user, setUser] = useState<SessionUser | null>(null);
@@ -276,17 +280,21 @@ export default function App() {
   const { locations, eggLogs, hens, feedLogs, medicationLogs, saleLogs, chickBatches } = state;
 
   return (
-    <div className="min-h-screen bg-[#F8F7FF] text-violet-900 font-sans pb-28 relative overflow-x-hidden egg-art">
+    <div className="min-h-screen bg-[#F8F7FF] text-violet-900 font-sans pb-32 relative overflow-x-hidden egg-art">
       <BackgroundArt />
 
       <header className="bg-white/90 backdrop-blur border-b border-violet-100 p-4 sticky top-0 z-30 shadow-sm">
         <div className="max-w-md mx-auto flex items-center justify-between gap-3">
           <div>
             <h1 className="text-[2.35rem] leading-none font-serif italic font-black tracking-tight">The Eggcountant</h1>
-            <p className="text-sm text-violet-900/55 max-w-[240px]">Just here for the crack, mind the eggs 🥚</p>
+            <p className="text-sm text-violet-900/55 max-w-[240px]">Here for the crack 🥚</p>
           </div>
-          <button onClick={() => setLogoutConfirmOpen(true)} className="p-3 rounded-2xl text-violet-400 hover:text-rose-500 hover:bg-rose-50 transition-colors">
-            <LogOut size={18} />
+          <button
+            onClick={() => setLogoutConfirmOpen(true)}
+            aria-label="Log out"
+            className="p-3 rounded-2xl text-violet-500 hover:text-rose-500 hover:bg-rose-50 transition-colors text-xl"
+          >
+            💥🥚
           </button>
         </div>
       </header>
@@ -307,6 +315,14 @@ export default function App() {
                 locations={locations}
                 chickBatches={chickBatches}
                 onOpenWiki={() => setActiveTab('wiki')}
+              />
+            )}
+            {activeTab === 'chicks' && (
+              <ChicksPage
+                chickBatches={chickBatches}
+                locations={locations}
+                onSaveBatch={(item) => upsert('chickBatches', 'chickBatches', item)}
+                onDeleteBatch={(id) => remove('chickBatches', 'chickBatches', id)}
               />
             )}
             {activeTab === 'settings' && (
@@ -335,16 +351,18 @@ export default function App() {
 
       <button
         onClick={() => setLogSheetOpen(true)}
-        className="fixed bottom-20 left-1/2 -translate-x-1/2 z-40 w-16 h-16 rounded-full bg-violet-600 text-white shadow-[0_18px_40px_rgba(124,58,237,0.35)] flex items-center justify-center border-4 border-[#F8F7FF]"
+        aria-label="Log eggs"
+        className="fixed bottom-8 left-1/2 -translate-x-1/2 z-40 w-[88px] h-[112px] egg-fab bg-violet-600 text-white shadow-[0_18px_40px_rgba(124,58,237,0.35)] flex items-center justify-center border-4 border-[#F8F7FF]"
       >
-        <Egg size={28} />
+        <Egg size={38} />
       </button>
 
-      <nav className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur border-t border-violet-100 px-4 py-3 z-20 shadow-[0_-4px_20px_rgba(124,58,237,0.05)]">
-        <div className="max-w-md mx-auto grid grid-cols-[1fr_1fr_88px_1fr] items-end gap-2">
+      <nav className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur border-t border-violet-100 px-4 pt-4 pb-3 z-20 shadow-[0_-4px_20px_rgba(124,58,237,0.05)]">
+        <div className="max-w-md mx-auto grid grid-cols-5 items-end gap-1">
           <NavButton icon={<House size={20} />} label="Home" active={activeTab === 'dashboard'} onClick={() => setActiveTab('dashboard')} />
+          <NavButton icon={<Bird size={20} />} label="Chicks" active={activeTab === 'chicks'} onClick={() => setActiveTab('chicks')} />
+          <div className="h-14" />
           <NavButton icon={<PoundSterling size={20} />} label="Sales" active={activeTab === 'sales'} onClick={() => setActiveTab('sales')} />
-          <div />
           <NavButton icon={<Settings size={20} />} label="Settings" active={activeTab === 'settings'} onClick={() => setActiveTab('settings')} />
         </div>
       </nav>
@@ -368,7 +386,7 @@ export default function App() {
       {logoutConfirmOpen && (
         <ConfirmSheet
           title="Sign out?"
-          body="Not one-tap anymore. Sensible, really."
+          body=""
           confirmText="Sign out"
           onCancel={() => setLogoutConfirmOpen(false)}
           onConfirm={handleLogout}
@@ -399,8 +417,6 @@ function Dashboard({
 }) {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [calendarFilter, setCalendarFilter] = useState<CalendarFilter>('eggs');
-  const days = useMemo(() => eachDayOfInterval({ start: startOfMonth(selectedDate), end: endOfMonth(selectedDate) }), [selectedDate]);
-  const selectedKey = format(selectedDate, 'yyyy-MM-dd');
   const totalEggs = eggLogs.reduce((sum, log) => sum + log.count, 0);
   const totalSold = saleLogs.reduce((sum, log) => sum + log.quantity, 0);
   const revenue = saleLogs.reduce((sum, log) => sum + log.price, 0);
@@ -414,6 +430,7 @@ function Dashboard({
     return { day: format(day, 'MMM d'), eggs };
   });
 
+  const selectedKey = format(selectedDate, 'yyyy-MM-dd');
   const selectedEggLogs = eggLogs.filter((log) => log.date.startsWith(selectedKey));
   const selectedEggs = selectedEggLogs.reduce((sum, log) => sum + log.count, 0);
   const selectedSales = saleLogs.filter((log) => log.date.startsWith(selectedKey));
@@ -431,9 +448,12 @@ function Dashboard({
       </section>
 
       <Card>
-        <div className="flex justify-between items-end mb-4">
+        <div className="flex justify-between items-end mb-4 gap-3">
           <div>
-            <h3 className="text-lg font-serif italic">Production trend</h3>
+            <div className="flex items-center gap-2">
+              <span className="text-lg text-violet-500" aria-hidden="true">𝍩</span>
+              <h3 className="text-lg font-serif italic">Rollin' Lay Count</h3>
+            </div>
             <p className="text-[10px] uppercase tracking-[0.2em] text-violet-900/35 font-bold">Last 14 days</p>
           </div>
           <p className="text-2xl font-serif italic text-violet-600 font-bold">{chartData.reduce((sum, item) => sum + item.eggs, 0)}</p>
@@ -460,7 +480,6 @@ function Dashboard({
       <CalendarCard
         selectedDate={selectedDate}
         onSelectDate={setSelectedDate}
-        days={days}
         calendarFilter={calendarFilter}
         onChangeFilter={setCalendarFilter}
         eggLogs={eggLogs}
@@ -471,12 +490,9 @@ function Dashboard({
       />
 
       <Card>
-        <div className="flex justify-between items-center gap-3">
-          <div>
-            <p className="text-[10px] uppercase tracking-[0.2em] text-violet-900/35 font-bold">Selected day</p>
-            <h3 className="text-xl font-serif italic font-bold">{format(selectedDate, 'EEEE d MMMM')}</h3>
-          </div>
-          <CalendarDays className="text-violet-400" />
+        <div className="space-y-1">
+          <h3 className="text-xl font-serif italic font-bold">{format(selectedDate, 'EEEE d MMMM')}</h3>
+          <p className="text-[10px] uppercase tracking-[0.2em] text-violet-900/35 font-bold">Selected day</p>
         </div>
         <div className="grid grid-cols-2 gap-3 mt-4">
           <MiniStat label="Egg lay" value={selectedEggs} highlight={selectedEggs > 0} />
@@ -486,19 +502,19 @@ function Dashboard({
         </div>
         <div className="mt-4 space-y-3">
           {selectedEggLogs.length > 0 && (
-            <TimelineRow icon={<Egg size={16} />} tone="bg-amber-50 text-amber-700" title={`Egg lay: ${selectedEggs} egg${selectedEggs === 1 ? '' : 's'}`} subtitle={selectedEggLogs.map((log) => `${log.mode === 'breed' ? 'Breed' : 'Produce'} · ${log.count}`).join(' • ')} />
+            <TimelineRow icon={<Egg size={16} />} tone="border border-[#f6c85f]/70 bg-white text-violet-800" title={`Egg lay: ${selectedEggs}`} subtitle={selectedEggLogs.map((log) => `${log.mode === 'breed' ? 'Breed' : 'Produce'} · ${log.count}`).join(' • ')} />
           )}
           {selectedSales.map((log) => (
             <div key={log.id}><TimelineRow icon={<PoundSterling size={16} />} tone="bg-emerald-50 text-emerald-700" title={`Sale: ${log.quantity} eggs`} subtitle={`£${log.price.toFixed(2)}`} /></div>
           ))}
           {selectedFeed.map((log) => (
-            <div key={log.id}><TimelineRow icon={<Utensils size={16} />} tone="bg-violet-50 text-violet-700" title={`Feed top-up: ${log.amount} ${log.amount === 1 ? 'bag' : 'bags'}`} subtitle={[log.feedType, log.weight ? `${log.weight}kg` : null, log.cost ? `£${log.cost.toFixed(2)}` : null].filter(Boolean).join(' • ')} /></div>
+            <div key={log.id}><TimelineRow icon={<Wheat size={16} />} tone="bg-violet-50 text-violet-700" title={`Chow top-up: ${log.amount} ${log.amount === 1 ? 'pack / bag' : 'packs / bags'}`} subtitle={[log.feedType, log.weight ? `${log.weight}kg` : null, log.cost ? `£${log.cost.toFixed(2)}` : null].filter(Boolean).join(' • ')} /></div>
           ))}
           {selectedMeds.map((log) => (
             <div key={log.id}><TimelineRow icon={<Stethoscope size={16} />} tone="bg-rose-50 text-rose-700" title={log.medicationName} subtitle={log.dosage} /></div>
           ))}
           {selectedIncubationStarts.map((batch) => (
-            <div key={batch.id}><TimelineRow icon={<Bird size={16} />} tone="bg-sky-50 text-sky-700" title={`Slow Cooker started: ${batch.count} eggs`} subtitle={`Expected hatch ${format(parseISO(batch.expectedHatchDate), 'd MMM')}`} /></div>
+            <div key={batch.id}><TimelineRow icon={<Bird size={16} />} tone="bg-sky-50 text-sky-700" title={`Chicks started: ${batch.count} 🥚’s`} subtitle={`Expected hatch ${format(parseISO(batch.expectedHatchDate), 'd MMM')}`} /></div>
           ))}
           {selectedEggLogs.length === 0 && selectedSales.length === 0 && selectedFeed.length === 0 && selectedMeds.length === 0 && selectedIncubationStarts.length === 0 && (
             <EmptyState icon={<CalendarDays size={20} />} text="Quiet day. Suspiciously efficient." />
@@ -513,10 +529,13 @@ function Dashboard({
             const eggs = eggLogs.filter((log) => log.locationId === location.id).reduce((sum, log) => sum + log.count, 0);
             const percentage = totalEggs ? (eggs / totalEggs) * 100 : 0;
             return (
-              <div key={location.id} className="space-y-1">
-                <div className="flex justify-between text-sm font-medium">
+              <div key={location.id} className="space-y-2">
+                <div className="flex justify-between items-end text-sm font-medium gap-3">
                   <span>{location.name}</span>
-                  <span>{eggs} eggs</span>
+                  <div className="text-right leading-none">
+                    <div className="text-lg font-serif italic font-bold text-violet-700">{eggs}</div>
+                    <div className="text-[10px] uppercase tracking-[0.2em] text-violet-900/35 font-bold">{eggCupLabel} egg cup</div>
+                  </div>
                 </div>
                 <div className="h-2 bg-violet-50 rounded-full overflow-hidden">
                   <div className="h-full bg-violet-600 rounded-full" style={{ width: `${percentage}%` }} />
@@ -526,15 +545,6 @@ function Dashboard({
           })}
         </div>
       </Card>
-
-      {chickBatches.length > 0 && (
-        <Card>
-          <h3 className="text-lg font-serif italic mb-4">Slow Cooker</h3>
-          <div className="space-y-3">
-            {chickBatches.map((batch) => <div key={batch.id}><ChickBatchTile batch={batch} compact /></div>)}
-          </div>
-        </Card>
-      )}
 
       <Card className="p-4">
         <button onClick={onOpenWiki} className="w-full flex items-center justify-between gap-3 text-left rounded-[24px] bg-violet-50 px-4 py-4 text-violet-700">
@@ -552,7 +562,6 @@ function Dashboard({
 function CalendarCard({
   selectedDate,
   onSelectDate,
-  days,
   calendarFilter,
   onChangeFilter,
   eggLogs,
@@ -563,7 +572,6 @@ function CalendarCard({
 }: {
   selectedDate: Date;
   onSelectDate: (date: Date) => void;
-  days: Date[];
   calendarFilter: CalendarFilter;
   onChangeFilter: (value: CalendarFilter) => void;
   eggLogs: EggLog[];
@@ -572,29 +580,42 @@ function CalendarCard({
   medicationLogs: MedicationLog[];
   chickBatches: ChickBatch[];
 }) {
+  const [range, setRange] = useState<CalendarRange>('month');
+  const days = useMemo(() => {
+    if (range === 'month') {
+      return eachDayOfInterval({ start: startOfMonth(selectedDate), end: endOfMonth(selectedDate) });
+    }
+    const span = range === '7' ? 6 : 13;
+    return eachDayOfInterval({ start: subDays(selectedDate, span), end: selectedDate });
+  }, [range, selectedDate]);
+
+  const title = range === 'month'
+    ? format(selectedDate, 'MMMM yyyy')
+    : `${range} day view`;
+
   const hasEvent = (key: string) => {
     if (calendarFilter === 'eggs') return eggLogs.some((log) => log.date.startsWith(key));
     if (calendarFilter === 'sales') return saleLogs.some((log) => log.date.startsWith(key));
-    if (calendarFilter === 'care') return feedLogs.some((log) => log.date.startsWith(key)) || medicationLogs.some((log) => log.date.startsWith(key));
+    if (calendarFilter === 'feed') return feedLogs.some((log) => log.date.startsWith(key)) || medicationLogs.some((log) => log.date.startsWith(key));
     return chickBatches.some((batch) => batch.dateStarted.startsWith(key));
   };
 
   const eventValue = (key: string) => {
     if (calendarFilter === 'eggs') return eggLogs.filter((log) => log.date.startsWith(key)).reduce((sum, log) => sum + log.count, 0);
     if (calendarFilter === 'sales') return saleLogs.filter((log) => log.date.startsWith(key)).length;
-    if (calendarFilter === 'care') return feedLogs.filter((log) => log.date.startsWith(key)).length + medicationLogs.filter((log) => log.date.startsWith(key)).length;
+    if (calendarFilter === 'feed') return feedLogs.filter((log) => log.date.startsWith(key)).length + medicationLogs.filter((log) => log.date.startsWith(key)).length;
     return chickBatches.filter((batch) => batch.dateStarted.startsWith(key)).length;
   };
 
   return (
     <Card>
       <div className="flex items-center justify-between mb-4 gap-3">
-        <h2 className="text-2xl font-serif italic font-bold">{format(selectedDate, 'MMMM yyyy')}</h2>
-        <button onClick={() => onSelectDate(new Date())} className="px-3 py-2 rounded-xl bg-violet-50 text-violet-600 text-xs font-bold">Today</button>
+        <h2 className="text-2xl font-serif italic font-bold">{title}</h2>
+        {range !== 'month' && <p className="text-[10px] uppercase tracking-[0.2em] text-violet-900/35 font-bold">ending {format(selectedDate, 'd MMM')}</p>}
       </div>
-      <div className="flex gap-2 mb-4 overflow-x-auto no-scrollbar">
+      <div className="grid grid-cols-2 gap-2 mb-4">
         {calendarFilters.map((item) => (
-          <button key={item.key} onClick={() => onChangeFilter(item.key)} className={`shrink-0 px-3 py-2 rounded-2xl text-xs font-bold border flex items-center gap-1.5 ${calendarFilter === item.key ? 'bg-violet-600 text-white border-violet-600' : 'bg-violet-50 text-violet-700 border-violet-100'}`}>
+          <button key={item.key} onClick={() => onChangeFilter(item.key)} className={`px-3 py-2.5 rounded-2xl text-xs font-bold border flex items-center justify-center gap-1.5 ${calendarFilter === item.key ? 'bg-violet-600 text-white border-violet-600' : 'bg-violet-50 text-violet-700 border-violet-100'}`}>
             {item.icon}
             {item.label}
           </button>
@@ -604,22 +625,72 @@ function CalendarCard({
         {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((day) => <div key={day} className="text-[10px] uppercase tracking-widest text-violet-900/35 font-bold">{day}</div>)}
       </div>
       <div className="grid grid-cols-7 gap-2">
-        {Array.from({ length: (new Date(days[0]).getDay() + 6) % 7 }).map((_, index) => <div key={`gap-${index}`} />)}
+        {range === 'month' && Array.from({ length: (new Date(days[0]).getDay() + 6) % 7 }).map((_, index) => <div key={`gap-${index}`} />)}
         {days.map((day) => {
           const key = format(day, 'yyyy-MM-dd');
           const isSelected = isSameDay(day, selectedDate);
           const value = eventValue(key);
           const active = hasEvent(key);
           return (
-            <button key={day.toISOString()} onClick={() => onSelectDate(day)} className={`aspect-square rounded-2xl border flex flex-col items-center justify-center relative ${isSelected ? 'bg-violet-600 text-white border-violet-600' : active ? 'bg-white border-violet-200' : 'bg-white border-violet-100'}`}>
-              <span className={`text-xs font-serif italic ${calendarFilter === 'eggs' && active && !isSelected ? 'font-black text-violet-700' : ''}`}>{format(day, 'd')}</span>
-              {active && <span className={`text-[10px] font-bold ${calendarFilter === 'eggs' ? 'text-amber-500' : isSelected ? 'text-white/90' : 'text-violet-500'}`}>{value}</span>}
-              {calendarFilter === 'eggs' && active && !isSelected && <span className="absolute bottom-1 w-1.5 h-1.5 rounded-full bg-amber-400" />}
+            <button
+              key={day.toISOString()}
+              onClick={() => onSelectDate(day)}
+              className={`aspect-square rounded-2xl border flex flex-col items-center justify-center px-1 ${isSelected ? 'bg-violet-600 text-white border-violet-600' : active ? 'bg-white border-[#f6c85f]' : 'bg-white border-violet-100'}`}
+            >
+              <span className={`text-[11px] font-semibold ${isSelected ? 'text-white/80' : 'text-violet-900/55'}`}>{format(day, 'd')}</span>
+              {active && <span className={`text-sm font-black leading-none mt-1 ${isSelected ? 'text-white' : 'text-violet-700'}`}>{value}</span>}
             </button>
           );
         })}
       </div>
+      <div className="grid grid-cols-3 gap-2 mt-4">
+        <button onClick={() => setRange('7')} className={`py-2.5 rounded-2xl text-xs font-bold border ${range === '7' ? 'bg-violet-600 text-white border-violet-600' : 'bg-violet-50 text-violet-700 border-violet-100'}`}>7 days</button>
+        <button onClick={() => setRange('14')} className={`py-2.5 rounded-2xl text-xs font-bold border ${range === '14' ? 'bg-violet-600 text-white border-violet-600' : 'bg-violet-50 text-violet-700 border-violet-100'}`}>14 days</button>
+        <button onClick={() => setRange('month')} className={`py-2.5 rounded-2xl text-xs font-bold border ${range === 'month' ? 'bg-violet-600 text-white border-violet-600' : 'bg-violet-50 text-violet-700 border-violet-100'}`}>1 month</button>
+      </div>
     </Card>
+  );
+}
+
+function ChicksPage({
+  chickBatches,
+  locations,
+  onSaveBatch,
+  onDeleteBatch,
+}: {
+  chickBatches: ChickBatch[];
+  locations: Location[];
+  onSaveBatch: (item: ChickBatch) => Promise<void>;
+  onDeleteBatch: (id: string) => Promise<void>;
+}) {
+  const sortedBatches = [...chickBatches].sort((a, b) => parseISO(b.dateStarted).getTime() - parseISO(a.dateStarted).getTime());
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <div className="space-y-1">
+          <h2 className="text-2xl font-serif italic font-bold">Chicks</h2>
+          <p className="text-sm text-violet-900/55">All the former Slow Cooker business lives here now. Much tidier.</p>
+        </div>
+      </Card>
+
+      {sortedBatches.length === 0 ? (
+        <Card><EmptyState icon={<Bird size={22} />} text="No incubation batches yet. Tap the big egg to start one." /></Card>
+      ) : (
+        <div className="space-y-3">
+          {sortedBatches.map((batch) => (
+            <div key={batch.id}>
+              <EditableChickBatchTile
+                batch={batch}
+                locationName={locations.find((location) => location.id === batch.locationId)?.name}
+                onSave={onSaveBatch}
+                onDelete={() => onDeleteBatch(batch.id)}
+              />
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -657,7 +728,7 @@ function SettingsPage({
   const sections = [
     { key: 'birds' as const, label: 'Birds', icon: <Bird size={16} /> },
     { key: 'coops' as const, label: 'Coops', icon: <MapPin size={16} /> },
-    { key: 'feed' as const, label: 'Feed', icon: <Utensils size={16} /> },
+    { key: 'feed' as const, label: 'Feed', icon: <Wheat size={16} /> },
   ];
 
   return (
@@ -881,6 +952,8 @@ function FeedAndMedTracker({
   const [medHenId, setMedHenId] = useState('');
   const [medLocationId, setMedLocationId] = useState(locations[0]?.id || '');
   const [medDate, setMedDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const formRef = useRef<HTMLDivElement | null>(null);
+  const recentFeedLogs = useMemo(() => feedLogs.filter((log) => withinLastDays(log.date, 14)), [feedLogs]);
 
   const resetFeed = () => {
     setEditingFeedId(null);
@@ -907,39 +980,41 @@ function FeedAndMedTracker({
   return (
     <div className="space-y-4">
       <div className="flex bg-white p-1 rounded-2xl border border-violet-100 shadow-sm">
-        <button onClick={() => setMode('feed')} className={`flex-1 py-3 rounded-xl text-sm font-bold ${mode === 'feed' ? 'bg-violet-600 text-white' : 'text-violet-900/40'}`}>Feed</button>
+        <button onClick={() => setMode('feed')} className={`flex-1 py-3 rounded-xl text-sm font-bold ${mode === 'feed' ? 'bg-violet-600 text-white' : 'text-violet-900/40'}`}>Chow</button>
         <button onClick={() => setMode('med')} className={`flex-1 py-3 rounded-xl text-sm font-bold ${mode === 'med' ? 'bg-violet-600 text-white' : 'text-violet-900/40'}`}>Medication</button>
       </div>
 
       {mode === 'feed' ? (
         <>
-          <Card>
-            <div className="space-y-4">
-              <div className="flex justify-between items-center"><h2 className="text-2xl font-serif italic font-bold">Feed log</h2>{editingFeedId && <button onClick={resetFeed} className="text-xs font-bold px-3 py-2 rounded-xl bg-violet-50 text-violet-600">Cancel edit</button>}</div>
-              <Field label="Bags"><Stepper value={amount} onChange={setAmount} min={1} max={20} /></Field>
-              <div className="grid grid-cols-2 gap-4">
-                <Field label="Weight (kg, optional)"><input type="number" value={weight} onChange={(e) => setWeight(e.target.value)} className={inputClass} placeholder="20" /></Field>
-                <Field label="Cost (£, optional)"><input type="number" value={cost} onChange={(e) => setCost(e.target.value)} className={inputClass} placeholder="14.99" /></Field>
+          <div ref={formRef}>
+            <Card>
+              <div className="space-y-4">
+                <div className="flex justify-between items-center"><h2 className="text-2xl font-serif italic font-bold flex items-center gap-2"><Wheat size={22} className="text-violet-500" />Chow Log</h2>{editingFeedId && <button onClick={resetFeed} className="text-xs font-bold px-3 py-2 rounded-xl bg-violet-50 text-violet-600">Cancel edit</button>}</div>
+                <Field label="Packs / Bags"><Stepper value={amount} onChange={setAmount} min={1} max={20} /></Field>
+                <div className="grid grid-cols-2 gap-4">
+                  <Field label="WEIGHT"><input type="number" value={weight} onChange={(e) => setWeight(e.target.value)} className={inputClass} placeholder="20" /></Field>
+                  <Field label="COST"><input type="number" value={cost} onChange={(e) => setCost(e.target.value)} className={inputClass} placeholder="14.99" /></Field>
+                </div>
+                <Field label="Type (optional)"><input value={feedType} onChange={(e) => setFeedType(e.target.value)} className={inputClass} placeholder="Layers pellets" /></Field>
+                <Field label="Date"><DateButton value={feedDate} onChange={setFeedDate} /></Field>
+                <Field label="Coop"><Select value={feedLocationId} onChange={(e) => setFeedLocationId(e.target.value)}>{locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</Select></Field>
+                <button onClick={async () => {
+                  if (!feedLocationId) return;
+                  await onSaveFeed({
+                    id: editingFeedId || crypto.randomUUID(),
+                    date: new Date(feedDate).toISOString(),
+                    amount,
+                    cost: cost ? Number(cost) : undefined,
+                    weight: weight ? Number(weight) : undefined,
+                    feedType: feedType || undefined,
+                    locationId: feedLocationId,
+                  });
+                  resetFeed();
+                }} className="w-full py-4 bg-violet-600 text-white rounded-2xl font-bold">{editingFeedId ? 'Save chow log' : 'Log chow purchase'}</button>
               </div>
-              <Field label="Type (optional)"><input value={feedType} onChange={(e) => setFeedType(e.target.value)} className={inputClass} placeholder="Layers pellets" /></Field>
-              <Field label="Date"><DateButton value={feedDate} onChange={setFeedDate} /></Field>
-              <Field label="Coop"><Select value={feedLocationId} onChange={(e) => setFeedLocationId(e.target.value)}>{locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</Select></Field>
-              <button onClick={async () => {
-                if (!feedLocationId) return;
-                await onSaveFeed({
-                  id: editingFeedId || crypto.randomUUID(),
-                  date: new Date(feedDate).toISOString(),
-                  amount,
-                  cost: cost ? Number(cost) : undefined,
-                  weight: weight ? Number(weight) : undefined,
-                  feedType: feedType || undefined,
-                  locationId: feedLocationId,
-                });
-                resetFeed();
-              }} className="w-full py-4 bg-violet-600 text-white rounded-2xl font-bold">{editingFeedId ? 'Save feed log' : 'Log feed purchase'}</button>
-            </div>
-          </Card>
-          <div className="space-y-3">{feedLogs.map((log) => <Card key={log.id}><div className="flex justify-between gap-3"><div><p className="font-bold">{log.amount} {log.amount === 1 ? 'bag' : 'bags'}{log.feedType ? ` · ${log.feedType}` : ''}</p><p className="text-xs text-violet-900/45">{format(parseISO(log.date), 'd MMM yyyy')} • {locations.find((location) => location.id === log.locationId)?.name}</p><p className="text-xs text-violet-900/45">{[log.weight ? `${log.weight}kg` : null, log.cost ? `£${log.cost.toFixed(2)}` : null].filter(Boolean).join(' • ') || 'Optional extras not logged'}</p></div><div className="flex gap-1"><button onClick={() => { setEditingFeedId(log.id); setAmount(log.amount); setCost(log.cost ? String(log.cost) : ''); setWeight(log.weight ? String(log.weight) : ''); setFeedType(log.feedType || ''); setFeedDate(format(parseISO(log.date), 'yyyy-MM-dd')); setFeedLocationId(log.locationId); }} className="p-2 rounded-xl bg-violet-50 text-violet-600"><Pencil size={14} /></button><button onClick={() => onDeleteFeed(log.id)} className="p-2 rounded-xl bg-rose-50 text-rose-500"><Trash2 size={14} /></button></div></div></Card>)}</div>
+            </Card>
+          </div>
+          <div className="space-y-3">{recentFeedLogs.map((log) => <Card key={log.id}><div className="flex justify-between gap-3"><div><p className="font-bold">{log.amount} {log.amount === 1 ? 'pack / bag' : 'packs / bags'}{log.feedType ? ` · ${log.feedType}` : ''}</p><p className="text-xs text-violet-900/45">{format(parseISO(log.date), 'd MMM yyyy')} • {locations.find((location) => location.id === log.locationId)?.name}</p><p className="text-xs text-violet-900/45">{[log.weight ? `${log.weight}kg` : null, log.cost ? `£${log.cost.toFixed(2)}` : null].filter(Boolean).join(' • ') || 'Optional extras not logged'}</p></div><div className="flex gap-1"><button onClick={() => { setEditingFeedId(log.id); setAmount(log.amount); setCost(log.cost ? String(log.cost) : ''); setWeight(log.weight ? String(log.weight) : ''); setFeedType(log.feedType || ''); setFeedDate(format(parseISO(log.date), 'yyyy-MM-dd')); setFeedLocationId(log.locationId); formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }} className="p-2 rounded-xl bg-violet-50 text-violet-600"><Pencil size={14} /></button><button onClick={() => onDeleteFeed(log.id)} className="p-2 rounded-xl bg-rose-50 text-rose-500"><Trash2 size={14} /></button></div></div></Card>)}</div>
         </>
       ) : (
         <>
@@ -968,27 +1043,38 @@ function FeedAndMedTracker({
 }
 
 function SalesTracker({ saleLogs, onSave, onDelete }: { saleLogs: SaleLog[]; onSave: (item: SaleLog) => Promise<void>; onDelete: (id: string) => Promise<void> }) {
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [quantity, setQuantity] = useState(6);
   const [price, setPrice] = useState('');
   const [date, setDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const recentSales = useMemo(() => saleLogs.filter((log) => withinLastDays(log.date, 14)), [saleLogs]);
+
+  const reset = () => {
+    setEditingId(null);
+    setQuantity(6);
+    setPrice('');
+    setDate(format(new Date(), 'yyyy-MM-dd'));
+  };
 
   return (
     <div className="space-y-4">
       <Card>
         <div className="space-y-4">
-          <h2 className="text-2xl font-serif italic font-bold">Record a sale</h2>
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-2xl font-serif italic font-bold">Record a sale</h2>
+            {editingId && <button onClick={reset} className="text-xs font-bold px-3 py-2 rounded-xl bg-violet-50 text-violet-600">Cancel edit</button>}
+          </div>
           <Field label="Quantity"><Stepper value={quantity} onChange={setQuantity} min={1} max={120} /></Field>
           <Field label="Price (£)"><input type="number" value={price} onChange={(e) => setPrice(e.target.value)} className={inputClass} /></Field>
           <Field label="Date"><DateButton value={date} onChange={setDate} /></Field>
           <button onClick={async () => {
             if (!price) return;
-            await onSave({ id: crypto.randomUUID(), quantity, price: Number(price), date: new Date(date).toISOString() });
-            setQuantity(6);
-            setPrice('');
-          }} className="w-full py-4 bg-violet-600 text-white rounded-2xl font-bold">Cluck n Load</button>
+            await onSave({ id: editingId || crypto.randomUUID(), quantity, price: Number(price), date: new Date(date).toISOString() });
+            reset();
+          }} className="w-full py-4 bg-violet-600 text-white rounded-2xl font-bold">{editingId ? 'Save sale' : 'Cluck n Load'}</button>
         </div>
       </Card>
-      <div className="space-y-3">{saleLogs.map((log) => <Card key={log.id}><div className="flex justify-between gap-3"><div><p className="font-bold">{log.quantity} eggs sold</p><p className="text-xs text-violet-900/45">{format(parseISO(log.date), 'd MMM yyyy')}</p></div><div className="flex items-start gap-2"><div className="font-serif italic font-bold text-violet-600">£{log.price.toFixed(2)}</div><button onClick={() => onDelete(log.id)} className="p-2 rounded-xl bg-rose-50 text-rose-500"><Trash2 size={14} /></button></div></div></Card>)}</div>
+      <div className="space-y-3">{recentSales.map((log) => <Card key={log.id}><div className="flex justify-between gap-3"><div><p className="font-bold">{log.quantity} eggs sold</p><p className="text-xs text-violet-900/45">{format(parseISO(log.date), 'd MMM yyyy')}</p></div><div className="flex items-start gap-2"><div className="font-serif italic font-bold text-violet-600">£{log.price.toFixed(2)}</div><button onClick={() => { setEditingId(log.id); setQuantity(log.quantity); setPrice(String(log.price)); setDate(format(parseISO(log.date), 'yyyy-MM-dd')); }} className="p-2 rounded-xl bg-violet-50 text-violet-600"><Pencil size={14} /></button><button onClick={() => onDelete(log.id)} className="p-2 rounded-xl bg-rose-50 text-rose-500"><Trash2 size={14} /></button></div></div></Card>)}</div>
     </div>
   );
 }
@@ -1059,13 +1145,13 @@ function LogSheet({
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-2xl font-serif italic font-bold">Log today</h2>
-            <p className="text-sm text-violet-900/50">Defaulting to produce, like a sensible hen.</p>
+            <p className="text-sm text-violet-900/50">Pick eggs or chicks and get on with it.</p>
           </div>
           <button onClick={onClose} className="p-2 rounded-xl bg-violet-50 text-violet-600"><X size={18} /></button>
         </div>
         <div className="grid grid-cols-2 gap-2">
-          <button onClick={() => setMode('produce')} className={`py-3 rounded-2xl font-bold border ${mode === 'produce' ? 'bg-violet-600 text-white border-violet-600' : 'bg-violet-50 text-violet-700 border-violet-100'}`}>Produce</button>
-          <button onClick={() => setMode('breed')} className={`py-3 rounded-2xl font-bold border ${mode === 'breed' ? 'bg-violet-600 text-white border-violet-600' : 'bg-violet-50 text-violet-700 border-violet-100'}`}>Breed</button>
+          <button aria-label="Produce mode" onClick={() => setMode('produce')} className={`py-3 rounded-2xl font-bold border flex items-center justify-center text-2xl ${mode === 'produce' ? 'bg-violet-600 text-white border-violet-600' : 'bg-violet-50 text-violet-700 border-violet-100'}`}>🍳</button>
+          <button aria-label="Breed mode" onClick={() => setMode('breed')} className={`py-3 rounded-2xl font-bold border flex items-center justify-center text-2xl ${mode === 'breed' ? 'bg-violet-600 text-white border-violet-600' : 'bg-violet-50 text-violet-700 border-violet-100'}`}>🐥</button>
         </div>
         <Field label={mode === 'breed' ? 'Egg count for incubation' : 'Egg count'}><Stepper value={count} onChange={setCount} min={1} max={48} /></Field>
         <Field label="Date"><DateButton value={date} onChange={setDate} /></Field>
@@ -1128,7 +1214,7 @@ function ConfirmSheet({ title, body, confirmText, onCancel, onConfirm }: { title
     <div className="fixed inset-0 bg-violet-950/30 z-50 flex items-end justify-center px-3 pt-10 pb-6">
       <div className="w-full max-w-md bg-white rounded-[32px] p-5 space-y-4 shadow-2xl max-h-[82vh] overflow-y-auto">
         <h3 className="text-2xl font-serif italic font-bold">{title}</h3>
-        <p className="text-sm text-violet-900/55">{body}</p>
+        {body ? <p className="text-sm text-violet-900/55">{body}</p> : null}
         <div className="grid grid-cols-2 gap-3">
           <button onClick={onCancel} className="py-3 rounded-2xl bg-violet-50 text-violet-700 font-bold">Stay</button>
           <button onClick={onConfirm} className="py-3 rounded-2xl bg-rose-500 text-white font-bold">{confirmText}</button>
@@ -1138,24 +1224,52 @@ function ConfirmSheet({ title, body, confirmText, onCancel, onConfirm }: { title
   );
 }
 
-function ChickBatchTile({ batch, compact = false }: { batch: ChickBatch; compact?: boolean }) {
+function EditableChickBatchTile({
+  batch,
+  locationName,
+  onSave,
+  onDelete,
+}: {
+  batch: ChickBatch;
+  locationName?: string;
+  onSave: (item: ChickBatch) => Promise<void>;
+  onDelete: () => Promise<void> | Promise<unknown>;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [hatchedCount, setHatchedCount] = useState(batch.hatchedCount && batch.hatchedCount > 0 ? batch.hatchedCount : batch.count);
   const totalDays = 21;
   const daysDone = Math.max(0, Math.min(totalDays, differenceInCalendarDays(new Date(), parseISO(batch.dateStarted))));
   const percent = Math.max(0, Math.min(100, (daysDone / totalDays) * 100));
   const daysLeft = Math.max(0, differenceInCalendarDays(parseISO(batch.expectedHatchDate), new Date()));
 
+  useEffect(() => {
+    setHatchedCount(batch.hatchedCount && batch.hatchedCount > 0 ? batch.hatchedCount : batch.count);
+  }, [batch.count, batch.hatchedCount]);
+
+  const saveEdit = async () => {
+    const nextStatus = hatchedCount > 0 ? 'Hatched' : batch.status;
+    await onSave({
+      ...batch,
+      hatchedCount,
+      perishedCount: Math.max(0, batch.count - hatchedCount),
+      status: nextStatus,
+      hatchDate: hatchedCount > 0 ? (batch.hatchDate || new Date().toISOString()) : batch.hatchDate,
+    });
+    setEditing(false);
+  };
+
   return (
-    <Card className={compact ? 'p-4' : ''}>
+    <Card className="p-4">
       <div className="space-y-3">
-        <div className="flex justify-between items-start gap-4 pr-16">
+        <div className="flex justify-between items-start gap-4">
           <div>
-            <p className="font-bold text-lg">{batch.count} eggs</p>
-            <p className="text-xs text-violet-900/45">Started {format(parseISO(batch.dateStarted), 'd MMM yyyy')}</p>
+            <p className="font-bold text-lg">{batch.count} 🥚’s</p>
+            <p className="text-xs text-violet-900/45">Started {format(parseISO(batch.dateStarted), 'd MMM yyyy')}{locationName ? ` • ${locationName}` : ''}</p>
             <p className="text-[10px] mt-2 uppercase tracking-widest text-violet-600 font-bold">{batch.status}</p>
           </div>
-          <div className="text-right text-xs text-violet-900/50">
-            <p>{daysLeft === 0 ? 'Hatch window' : `${daysLeft} day${daysLeft === 1 ? '' : 's'} left`}</p>
-            {batch.hatchedCount || batch.perishedCount ? <p>{batch.hatchedCount || 0} hatched • {batch.perishedCount || 0} perished</p> : null}
+          <div className="flex gap-1 shrink-0">
+            <button onClick={() => setEditing((current) => !current)} className="p-2 rounded-xl bg-violet-50 text-violet-600"><Pencil size={14} /></button>
+            <button onClick={() => onDelete()} className="p-2 rounded-xl bg-rose-50 text-rose-500"><Trash2 size={14} /></button>
           </div>
         </div>
         <div className="flex items-center gap-3 text-violet-500">
@@ -1163,8 +1277,30 @@ function ChickBatchTile({ batch, compact = false }: { batch: ChickBatch; compact
           <div className="flex-1">
             <div className="h-2 rounded-full bg-violet-100 overflow-hidden"><div className="h-full bg-gradient-to-r from-amber-300 to-violet-500 rounded-full" style={{ width: `${percent}%` }} /></div>
           </div>
-          <span className="text-lg">🐥</span>
+          <div className="text-right min-w-[84px] ml-auto">
+            <div className="text-lg">🐥</div>
+            <p className="text-xs text-violet-900/55">{daysLeft === 0 ? 'Hatch window' : `${daysLeft} day${daysLeft === 1 ? '' : 's'} left`}</p>
+          </div>
         </div>
+        {(batch.hatchedCount || batch.perishedCount) ? <p className="text-xs text-violet-900/55">{batch.hatchedCount || 0} hatched • {batch.perishedCount || 0} perished</p> : null}
+        {editing && (
+          <div className="rounded-3xl bg-violet-50 p-4 space-y-4 border border-violet-100">
+            <Field label="Chicks hatched">
+              <div className="space-y-3">
+                <input type="range" min={0} max={batch.count} value={hatchedCount} onChange={(e) => setHatchedCount(Number(e.target.value))} className="w-full accent-violet-600" />
+                <div className="flex items-center justify-between text-sm font-medium text-violet-700">
+                  <span>0</span>
+                  <span className="text-2xl font-serif italic font-bold">{hatchedCount}</span>
+                  <span>{batch.count}</span>
+                </div>
+              </div>
+            </Field>
+            <div className="grid grid-cols-2 gap-3">
+              <button onClick={() => setEditing(false)} className="py-3 rounded-2xl bg-white text-violet-700 font-bold border border-violet-100">Cancel</button>
+              <button onClick={saveEdit} className="py-3 rounded-2xl bg-violet-600 text-white font-bold">Save batch</button>
+            </div>
+          </div>
+        )}
       </div>
     </Card>
   );
@@ -1192,7 +1328,7 @@ function BackgroundArt() {
 }
 
 function NavButton({ icon, label, active, onClick }: { icon: ReactNode; label: string; active: boolean; onClick: () => void }) {
-  return <button onClick={onClick} className={`flex flex-col items-center justify-center p-1 rounded-xl transition-all ${active ? 'text-violet-600' : 'text-violet-300'}`}><div className={`p-1 rounded-lg ${active ? 'bg-violet-50' : ''}`}>{icon}</div><span className="text-[9px] mt-1 font-bold uppercase tracking-widest">{label}</span></button>;
+  return <button onClick={onClick} className={`flex flex-col items-center justify-center p-1 rounded-xl transition-all ${active ? 'text-violet-600' : 'text-violet-300'}`}><div className={`${active ? 'bg-violet-50' : ''} p-1 rounded-lg`}>{icon}</div><span className="text-[9px] mt-1 font-bold uppercase tracking-widest">{label}</span></button>;
 }
 
 function Card({ children, className = '' }: React.PropsWithChildren<{ className?: string }>) {
@@ -1204,11 +1340,22 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 }
 
 function StatCard({ label, value, subtitle, icon }: { label: string; value: string | number; subtitle?: string; icon: ReactNode }) {
-  return <Card className="p-3 min-h-[62px]"><div className="flex justify-between items-start gap-2"><div><span className="text-[10px] uppercase tracking-widest font-bold text-violet-900/40">{label}</span>{subtitle && <p className="text-[10px] text-violet-900/35 mt-1 leading-tight">{subtitle}</p>}</div><div className="p-1.5 bg-violet-50 rounded-lg">{icon}</div></div><div className="text-lg font-serif italic font-bold mt-2 leading-none">{value}</div></Card>;
+  return (
+    <Card className="p-4 min-h-[112px]">
+      <div className="flex justify-between items-start gap-3">
+        <div>
+          <span className="text-[10px] uppercase tracking-widest font-bold text-violet-900/40">{label}</span>
+          {subtitle && <p className="text-xs text-violet-900/45 mt-1 leading-snug">{subtitle}</p>}
+        </div>
+        <div className="p-2 bg-violet-50 rounded-xl shrink-0">{icon}</div>
+      </div>
+      <div className="text-[1.65rem] font-serif italic font-bold mt-4 leading-none">{value}</div>
+    </Card>
+  );
 }
 
 function MiniStat({ label, value, highlight = false }: { label: string; value: string | number; highlight?: boolean }) {
-  return <div className={`rounded-2xl p-4 text-center ${highlight ? 'bg-amber-50 ring-1 ring-amber-200' : 'bg-violet-50'}`}><p className="text-[10px] uppercase tracking-widest text-violet-900/35 font-bold">{label}</p><p className={`mt-2 font-serif italic font-bold ${highlight ? 'text-amber-700 text-xl' : 'text-violet-700'}`}>{value}</p></div>;
+  return <div className={`rounded-2xl p-4 text-center ${highlight ? 'bg-white ring-1 ring-[#f6c85f]' : 'bg-violet-50'}`}><p className="text-[10px] uppercase tracking-widest text-violet-900/35 font-bold">{label}</p><p className={`mt-2 font-serif italic font-bold ${highlight ? 'text-violet-700 text-xl' : 'text-violet-700'}`}>{value}</p></div>;
 }
 
 function TimelineRow({ icon, tone, title, subtitle }: { icon: ReactNode; tone: string; title: string; subtitle?: string }) {
@@ -1232,20 +1379,27 @@ function FullscreenMessage({ icon, title, subtitle }: { icon: ReactNode; title: 
 }
 
 function ImagePicker({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  const libraryRef = useRef<HTMLInputElement | null>(null);
+  const cameraRef = useRef<HTMLInputElement | null>(null);
+
+  const readFile = (file?: File | null) => {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onloadend = () => onChange(String(reader.result || ''));
+    reader.readAsDataURL(file);
+  };
+
   return (
-    <div className="flex items-center gap-3">
-      <label className="flex-1 cursor-pointer">
-        <div className="w-full bg-violet-50 border-2 border-dashed border-violet-200 rounded-2xl p-4 flex flex-col items-center justify-center gap-2 hover:bg-violet-100 transition-colors">
-          {value ? <img src={value} alt="Preview" className="w-12 h-12 object-cover rounded-lg" /> : <><Camera size={20} className="text-violet-400" /><span className="text-[10px] font-bold text-violet-400 uppercase">Upload photo</span></>}
-        </div>
-        <input type="file" accept="image/*" capture="environment" className="hidden" onChange={(event) => {
-          const file = event.target.files?.[0];
-          if (!file) return;
-          const reader = new FileReader();
-          reader.onloadend = () => onChange(String(reader.result || ''));
-          reader.readAsDataURL(file);
-        }} />
-      </label>
+    <div className="space-y-3">
+      <div className="rounded-2xl border-2 border-dashed border-violet-200 bg-violet-50 p-4 flex items-center justify-center min-h-28">
+        {value ? <img src={value} alt="Preview" className="w-20 h-20 object-cover rounded-2xl" /> : <div className="text-center text-violet-400"><Camera size={22} className="mx-auto mb-2" /><span className="text-[10px] font-bold uppercase tracking-[0.2em]">No photo yet</span></div>}
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <button type="button" onClick={() => libraryRef.current?.click()} className="py-3 rounded-2xl bg-white border border-violet-100 text-violet-700 font-bold text-sm">Choose from library</button>
+        <button type="button" onClick={() => cameraRef.current?.click()} className="py-3 rounded-2xl bg-violet-600 text-white font-bold text-sm">Take photo</button>
+      </div>
+      <input ref={libraryRef} type="file" accept="image/*" className="hidden" onChange={(event) => readFile(event.target.files?.[0])} />
+      <input ref={cameraRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={(event) => readFile(event.target.files?.[0])} />
       {value && <button type="button" onClick={() => onChange('')} className="p-2 text-rose-500 bg-rose-50 rounded-xl"><Trash2 size={18} /></button>}
     </div>
   );
