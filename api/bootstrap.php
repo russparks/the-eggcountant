@@ -57,7 +57,11 @@ function load_app_config(): array {
     if (file_exists($configPath)) {
         $loaded = require $configPath;
         if (is_array($loaded)) {
-            return array_replace_recursive($defaults, $loaded);
+            $config = array_replace_recursive($defaults, $loaded);
+            if (($config['db']['password'] ?? '') === '' && !empty($config['db']['pass'] ?? '')) {
+                $config['db']['password'] = (string) $config['db']['pass'];
+            }
+            return $config;
         }
     }
 
@@ -304,6 +308,134 @@ function table_has_column(string $table, string $column): bool {
     return array_key_exists($column, schema_columns($table));
 }
 
+function table_column(string $table, string $column): ?array {
+    $columns = schema_columns($table);
+    return $columns[$column] ?? null;
+}
+
+function table_uses_auto_increment_id(string $table): bool {
+    $idColumn = id_column($table);
+    if (!$idColumn) {
+        return false;
+    }
+
+    $column = table_column($table, $idColumn);
+    if (!$column) {
+        return false;
+    }
+
+    $extra = strtolower((string) ($column['Extra'] ?? $column['extra'] ?? ''));
+    return str_contains($extra, 'auto_increment');
+}
+
+function column_type(string $table, string $column): string {
+    $definition = table_column($table, $column);
+    return strtolower((string) ($definition['Type'] ?? $definition['type'] ?? ''));
+}
+
+function column_accepts_string_identifier(string $table, string $column): bool {
+    $type = column_type($table, $column);
+    if ($type === '') {
+        return true;
+    }
+
+    return preg_match('/char|text|json|blob|enum|set|binary|varbinary/', $type) === 1;
+}
+
+function payload_for_table_row(string $table, array $row): array {
+    $payloadColumn = payload_column($table);
+    return $payloadColumn ? decode_json_value($row[$payloadColumn] ?? null, []) : [];
+}
+
+function app_record_id_from_row(string $table, array $row): string {
+    $payload = payload_for_table_row($table, $row);
+    $payloadId = $payload['id'] ?? null;
+    if (is_scalar($payloadId) && (string) $payloadId !== '') {
+        return (string) $payloadId;
+    }
+
+    return (string) column_value($row, ['uuid', 'id'], '');
+}
+
+function record_primary_id_from_row(string $table, array $row): ?string {
+    $idColumn = id_column($table) ?? 'id';
+    if (!array_key_exists($idColumn, $row) || $row[$idColumn] === null || $row[$idColumn] === '') {
+        return null;
+    }
+
+    return (string) $row[$idColumn];
+}
+
+function find_existing_record_row(string $table, string $userId, string $recordId, ?string $extraWhere = null): ?array {
+    if ($recordId === '') {
+        return null;
+    }
+
+    $idColumn = id_column($table) ?? 'id';
+    if (!table_uses_auto_increment_id($table) || column_accepts_string_identifier($table, $idColumn)) {
+        $conditions = ["`{$idColumn}` = :id"];
+        $params = [':id' => $recordId];
+
+        $userIdColumn = user_id_column($table);
+        if ($userIdColumn) {
+            $conditions[] = "`{$userIdColumn}` = :user_id";
+            $params[':user_id'] = $userId;
+        }
+
+        $deletedAtColumn = delete_record_column($table);
+        if ($deletedAtColumn) {
+            $conditions[] = "`{$deletedAtColumn}` IS NULL";
+        }
+
+        if ($extraWhere) {
+            $conditions[] = $extraWhere;
+        }
+
+        $sql = "SELECT * FROM `{$table}` WHERE " . implode(' AND ', $conditions) . ' LIMIT 1';
+        $statement = db()->prepare($sql);
+        $statement->execute($params);
+        $row = $statement->fetch();
+        if ($row) {
+            return $row;
+        }
+    }
+
+    foreach (fetch_rows($table, $userId, $extraWhere) as $row) {
+        if (app_record_id_from_row($table, $row) === $recordId) {
+            return $row;
+        }
+    }
+
+    return null;
+}
+
+function resolve_related_record_primary_id(string $table, string $userId, ?string $appRecordId): ?string {
+    $appRecordId = $appRecordId === null ? null : trim((string) $appRecordId);
+    if ($appRecordId === null || $appRecordId == '') {
+        return null;
+    }
+
+    $row = find_existing_record_row($table, $userId, $appRecordId);
+    return $row ? record_primary_id_from_row($table, $row) : null;
+}
+
+function foreign_identifier_value(string $table, string $column, string $relatedTable, string $userId, $appRecordId): ?string {
+    if ($appRecordId === null || $appRecordId === '') {
+        return null;
+    }
+
+    $value = (string) $appRecordId;
+    if (!table_has_column($table, $column)) {
+        return null;
+    }
+
+    if (column_accepts_string_identifier($table, $column)) {
+        return $value;
+    }
+
+    return resolve_related_record_primary_id($relatedTable, $userId, $value);
+}
+
 function first_existing_column(string $table, array $candidates): ?string {
     foreach ($candidates as $candidate) {
         if (table_has_column($table, $candidate)) {
@@ -514,12 +646,23 @@ function db_delete_collection_item(string $userId, string $collection, string $i
         fail('Invalid collection', 400);
     }
 
+    $extraWhere = null;
+    if ($table === 'feed_logs') {
+        $extraWhere = feed_log_kind_where_clause($table, $collection === 'medicationLogs' ? 'medication' : 'feed') ?: null;
+    }
+
+    $existing = find_existing_record_row($table, $userId, $id, $extraWhere);
+    $primaryId = $existing ? record_primary_id_from_row($table, $existing) : null;
+    if ($primaryId === null) {
+        return;
+    }
+
     $conditions = [];
     $params = [];
 
     $idColumn = id_column($table) ?? 'id';
     $conditions[] = "`{$idColumn}` = :id";
-    $params[':id'] = $id;
+    $params[':id'] = $primaryId;
 
     $userIdColumn = user_id_column($table);
     if ($userIdColumn) {
@@ -527,11 +670,8 @@ function db_delete_collection_item(string $userId, string $collection, string $i
         $params[':user_id'] = $userId;
     }
 
-    if ($table === 'feed_logs') {
-        $rowTypeClause = feed_log_kind_where_clause($table, $collection === 'medicationLogs' ? 'medication' : 'feed');
-        if ($rowTypeClause !== '') {
-            $conditions[] = $rowTypeClause;
-        }
+    if ($extraWhere) {
+        $conditions[] = $extraWhere;
     }
 
     $deletedAtColumn = delete_record_column($table);
@@ -595,24 +735,14 @@ function fetch_rows(string $table, string $userId, ?string $extraWhere = null): 
     return $statement->fetchAll();
 }
 
-function persist_row(string $table, string $recordId, string $userId, array $columnValues): void {
+function persist_row(string $table, string $recordId, string $userId, array $columnValues, ?string $extraWhere = null): void {
     $columns = schema_columns($table);
     $idColumn = id_column($table) ?? 'id';
     $userIdColumn = user_id_column($table);
     $createdAtColumn = created_at_column($table);
     $updatedAtColumn = updated_at_column($table);
-
-    $existingConditions = ["`{$idColumn}` = :id"];
-    $existingParams = [':id' => $recordId];
-    if ($userIdColumn) {
-        $existingConditions[] = "`{$userIdColumn}` = :user_id";
-        $existingParams[':user_id'] = $userId;
-    }
-
-    $existingSql = "SELECT * FROM `{$table}` WHERE " . implode(' AND ', $existingConditions) . ' LIMIT 1';
-    $existingStatement = db()->prepare($existingSql);
-    $existingStatement->execute($existingParams);
-    $existing = $existingStatement->fetch();
+    $existing = find_existing_record_row($table, $userId, $recordId, $extraWhere);
+    $existingPrimaryId = $existing ? record_primary_id_from_row($table, $existing) : null;
 
     $data = [];
     foreach ($columnValues as $column => $value) {
@@ -621,7 +751,12 @@ function persist_row(string $table, string $recordId, string $userId, array $col
         }
     }
 
-    $data[$idColumn] = $recordId;
+    if (!$existing && !$existingPrimaryId && isset($columns[$idColumn]) && !table_uses_auto_increment_id($table) && column_accepts_string_identifier($table, $idColumn)) {
+        $data[$idColumn] = $recordId;
+    }
+    if (isset($columns['uuid']) && column_accepts_string_identifier($table, 'uuid') && !array_key_exists('uuid', $data)) {
+        $data['uuid'] = $recordId;
+    }
     if ($userIdColumn) {
         $data[$userIdColumn] = $userId;
     }
@@ -632,7 +767,7 @@ function persist_row(string $table, string $recordId, string $userId, array $col
         $data[$updatedAtColumn] = now_sql();
     }
 
-    if ($existing) {
+    if ($existing && $existingPrimaryId !== null) {
         $assignments = [];
         $params = [];
         foreach ($data as $column => $value) {
@@ -646,7 +781,7 @@ function persist_row(string $table, string $recordId, string $userId, array $col
         if (!$assignments) {
             return;
         }
-        $params[':where_id'] = $recordId;
+        $params[':where_id'] = $existingPrimaryId;
         $where = ["`{$idColumn}` = :where_id"];
         if ($userIdColumn) {
             $where[] = "`{$userIdColumn}` = :where_user_id";
@@ -716,9 +851,9 @@ function fetch_coops(string $userId): array {
 }
 
 function map_coop_row_to_record(array $row): array {
-    $payload = decode_json_value($row[payload_column('coops') ?? ''] ?? null, []);
+    $payload = payload_for_table_row('coops', $row);
     return [
-        'id' => (string) column_value($row, ['id', 'uuid'], $payload['id'] ?? ''),
+        'id' => (string) ($payload['id'] ?? column_value($row, ['uuid', 'id'], '')),
         'name' => (string) column_value($row, ['name', 'coop_name', 'title'], $payload['name'] ?? ''),
         'type' => (string) column_value($row, ['type', 'coop_type'], $payload['type'] ?? 'Other'),
         'photoUrl' => column_value($row, ['photo_url', 'photoUrl', 'image_url', 'imageUrl'], $payload['photoUrl'] ?? null),
@@ -744,12 +879,12 @@ function fetch_birds(string $userId): array {
 }
 
 function map_bird_row_to_record(array $row): array {
-    $payload = decode_json_value($row[payload_column('birds') ?? ''] ?? null, []);
+    $payload = payload_for_table_row('birds', $row);
     return [
-        'id' => (string) column_value($row, ['id', 'uuid'], $payload['id'] ?? ''),
+        'id' => (string) ($payload['id'] ?? column_value($row, ['uuid', 'id'], '')),
         'name' => (string) column_value($row, ['name'], $payload['name'] ?? ''),
         'breed' => column_value($row, ['breed'], $payload['breed'] ?? null),
-        'locationId' => (string) column_value($row, ['coop_id', 'location_id', 'locationId'], $payload['locationId'] ?? ''),
+        'locationId' => (string) ($payload['locationId'] ?? column_value($row, ['coop_id', 'location_id', 'locationId'], '')),
         'status' => (string) column_value($row, ['status', 'appearance'], $payload['status'] ?? 'Healthy'),
         'photoUrl' => column_value($row, ['photo_url', 'photoUrl', 'image_url', 'imageUrl'], $payload['photoUrl'] ?? null),
         'notes' => column_value($row, ['notes'], $payload['notes'] ?? null),
@@ -760,9 +895,9 @@ function upsert_bird(string $userId, array $item): void {
     persist_row('birds', (string) $item['id'], $userId, array_filter([
         'name' => $item['name'] ?? null,
         'breed' => $item['breed'] ?? null,
-        'coop_id' => $item['locationId'] ?? null,
-        'location_id' => $item['locationId'] ?? null,
-        'locationId' => $item['locationId'] ?? null,
+        'coop_id' => foreign_identifier_value('birds', 'coop_id', 'coops', $userId, $item['locationId'] ?? null),
+        'location_id' => foreign_identifier_value('birds', 'location_id', 'coops', $userId, $item['locationId'] ?? null),
+        'locationId' => foreign_identifier_value('birds', 'locationId', 'coops', $userId, $item['locationId'] ?? null),
         'status' => $item['status'] ?? null,
         'appearance' => $item['status'] ?? null,
         'photo_url' => $item['photoUrl'] ?? null,
@@ -779,12 +914,12 @@ function fetch_egg_logs(string $userId): array {
 }
 
 function map_egg_log_row_to_record(array $row): array {
-    $payload = decode_json_value($row[payload_column('egg_logs') ?? ''] ?? null, []);
+    $payload = payload_for_table_row('egg_logs', $row);
     return [
-        'id' => (string) column_value($row, ['id', 'uuid'], $payload['id'] ?? ''),
+        'id' => (string) ($payload['id'] ?? column_value($row, ['uuid', 'id'], '')),
         'date' => iso_datetime((string) column_value($row, ['date', 'logged_at', 'logged_on'], $payload['date'] ?? '')),
         'count' => (int) column_value($row, ['count', 'egg_count', 'quantity'], $payload['count'] ?? 0),
-        'locationId' => (string) column_value($row, ['coop_id', 'location_id', 'locationId'], $payload['locationId'] ?? ''),
+        'locationId' => (string) ($payload['locationId'] ?? column_value($row, ['coop_id', 'location_id', 'locationId'], '')),
         'notes' => column_value($row, ['notes'], $payload['notes'] ?? null),
         'mode' => column_value($row, ['mode'], $payload['mode'] ?? null),
         'coopTemperature' => column_value($row, ['coop_temperature', 'temperature', 'coopTemperature'], $payload['coopTemperature'] ?? null),
@@ -799,9 +934,9 @@ function upsert_egg_log(string $userId, array $item): void {
         'count' => $item['count'] ?? null,
         'egg_count' => $item['count'] ?? null,
         'quantity' => $item['count'] ?? null,
-        'coop_id' => $item['locationId'] ?? null,
-        'location_id' => $item['locationId'] ?? null,
-        'locationId' => $item['locationId'] ?? null,
+        'coop_id' => foreign_identifier_value('egg_logs', 'coop_id', 'coops', $userId, $item['locationId'] ?? null),
+        'location_id' => foreign_identifier_value('egg_logs', 'location_id', 'coops', $userId, $item['locationId'] ?? null),
+        'locationId' => foreign_identifier_value('egg_logs', 'locationId', 'coops', $userId, $item['locationId'] ?? null),
         'notes' => $item['notes'] ?? null,
         'mode' => $item['mode'] ?? null,
         'coop_temperature' => $item['coopTemperature'] ?? null,
@@ -830,13 +965,13 @@ function fetch_feed_logs(string $userId, string $kind): array {
 }
 
 function map_feed_log_row_to_record(array $row, string $kind): array {
-    $payload = decode_json_value($row[payload_column('feed_logs') ?? ''] ?? null, []);
+    $payload = payload_for_table_row('feed_logs', $row);
     if ($kind === 'medication') {
         return [
-            'id' => (string) column_value($row, ['id', 'uuid'], $payload['id'] ?? ''),
+            'id' => (string) ($payload['id'] ?? column_value($row, ['uuid', 'id'], '')),
             'date' => iso_datetime((string) column_value($row, ['date', 'logged_at', 'logged_on'], $payload['date'] ?? '')),
-            'henId' => column_value($row, ['bird_id', 'hen_id', 'henId'], $payload['henId'] ?? null),
-            'locationId' => (string) column_value($row, ['coop_id', 'location_id', 'locationId'], $payload['locationId'] ?? ''),
+            'henId' => $payload['henId'] ?? column_value($row, ['bird_id', 'hen_id', 'henId'], null),
+            'locationId' => (string) ($payload['locationId'] ?? column_value($row, ['coop_id', 'location_id', 'locationId'], '')),
             'medicationName' => (string) column_value($row, ['medication_name', 'medicationName', 'name'], $payload['medicationName'] ?? ''),
             'dosage' => (string) column_value($row, ['dosage'], $payload['dosage'] ?? ''),
             'notes' => column_value($row, ['notes'], $payload['notes'] ?? null),
@@ -844,13 +979,13 @@ function map_feed_log_row_to_record(array $row, string $kind): array {
     }
 
     return [
-        'id' => (string) column_value($row, ['id', 'uuid'], $payload['id'] ?? ''),
+        'id' => (string) ($payload['id'] ?? column_value($row, ['uuid', 'id'], '')),
         'date' => iso_datetime((string) column_value($row, ['date', 'logged_at', 'logged_on'], $payload['date'] ?? '')),
         'amount' => (int) column_value($row, ['amount', 'quantity'], $payload['amount'] ?? 0),
         'cost' => column_value($row, ['cost', 'price'], $payload['cost'] ?? null),
         'weight' => column_value($row, ['weight'], $payload['weight'] ?? null),
         'feedType' => column_value($row, ['feed_type', 'feedType', 'type'], $payload['feedType'] ?? null),
-        'locationId' => (string) column_value($row, ['coop_id', 'location_id', 'locationId'], $payload['locationId'] ?? ''),
+        'locationId' => (string) ($payload['locationId'] ?? column_value($row, ['coop_id', 'location_id', 'locationId'], '')),
         'notes' => column_value($row, ['notes'], $payload['notes'] ?? null),
     ];
 }
@@ -865,18 +1000,18 @@ function upsert_feed_log(string $userId, array $item, string $kind): void {
         'date' => $item['date'] ?? null,
         'logged_at' => $item['date'] ?? null,
         'logged_on' => $item['date'] ?? null,
-        'coop_id' => $item['locationId'] ?? null,
-        'location_id' => $item['locationId'] ?? null,
-        'locationId' => $item['locationId'] ?? null,
+        'coop_id' => foreign_identifier_value('feed_logs', 'coop_id', 'coops', $userId, $item['locationId'] ?? null),
+        'location_id' => foreign_identifier_value('feed_logs', 'location_id', 'coops', $userId, $item['locationId'] ?? null),
+        'locationId' => foreign_identifier_value('feed_logs', 'locationId', 'coops', $userId, $item['locationId'] ?? null),
         'notes' => $item['notes'] ?? null,
         payload_column('feed_logs') ?: '__skip_payload' => json_encode($item, JSON_UNESCAPED_SLASHES),
     ];
 
     if ($kind === 'medication') {
         $values += [
-            'bird_id' => $item['henId'] ?? null,
-            'hen_id' => $item['henId'] ?? null,
-            'henId' => $item['henId'] ?? null,
+            'bird_id' => foreign_identifier_value('feed_logs', 'bird_id', 'birds', $userId, $item['henId'] ?? null),
+            'hen_id' => foreign_identifier_value('feed_logs', 'hen_id', 'birds', $userId, $item['henId'] ?? null),
+            'henId' => foreign_identifier_value('feed_logs', 'henId', 'birds', $userId, $item['henId'] ?? null),
             'medication_name' => $item['medicationName'] ?? null,
             'medicationName' => $item['medicationName'] ?? null,
             'dosage' => $item['dosage'] ?? null,
@@ -917,9 +1052,9 @@ function fetch_sales(string $userId): array {
 }
 
 function map_sale_row_to_record(array $row): array {
-    $payload = decode_json_value($row[payload_column('sales') ?? ''] ?? null, []);
+    $payload = payload_for_table_row('sales', $row);
     return [
-        'id' => (string) column_value($row, ['id', 'uuid'], $payload['id'] ?? ''),
+        'id' => (string) ($payload['id'] ?? column_value($row, ['uuid', 'id'], '')),
         'date' => iso_datetime((string) column_value($row, ['date', 'sale_date', 'sold_at', 'logged_at'], $payload['date'] ?? '')),
         'quantity' => (int) column_value($row, ['quantity', 'count'], $payload['quantity'] ?? 0),
         'price' => (float) column_value($row, ['price', 'amount', 'total'], $payload['price'] ?? 0),
@@ -952,18 +1087,18 @@ function fetch_incubation_batches(string $userId): array {
 }
 
 function map_incubation_row_to_record(array $row): array {
-    $payload = decode_json_value($row[payload_column('incubation_batches') ?? ''] ?? null, []);
+    $payload = payload_for_table_row('incubation_batches', $row);
     $chicksValue = column_value($row, ['chicks_json', 'chicks'], $payload['chicks'] ?? []);
     $chicks = is_array($chicksValue) ? $chicksValue : decode_json_value($chicksValue, []);
 
     return [
-        'id' => (string) column_value($row, ['id', 'uuid'], $payload['id'] ?? ''),
+        'id' => (string) ($payload['id'] ?? column_value($row, ['uuid', 'id'], '')),
         'dateStarted' => iso_datetime((string) column_value($row, ['date_started', 'dateStarted', 'started_at'], $payload['dateStarted'] ?? '')),
         'expectedHatchDate' => iso_datetime((string) column_value($row, ['expected_hatch_date', 'expectedHatchDate'], $payload['expectedHatchDate'] ?? '')),
         'hatchDate' => iso_datetime(column_value($row, ['hatch_date', 'hatchDate'], $payload['hatchDate'] ?? null)),
         'count' => (int) column_value($row, ['count', 'egg_count', 'quantity'], $payload['count'] ?? 0),
         'status' => (string) column_value($row, ['status'], $payload['status'] ?? 'Incubating'),
-        'locationId' => (string) column_value($row, ['coop_id', 'location_id', 'locationId'], $payload['locationId'] ?? ''),
+        'locationId' => (string) ($payload['locationId'] ?? column_value($row, ['coop_id', 'location_id', 'locationId'], '')),
         'notes' => column_value($row, ['notes'], $payload['notes'] ?? null),
         'hatchedCount' => column_value($row, ['hatched_count', 'hatchedCount'], $payload['hatchedCount'] ?? null),
         'perishedCount' => column_value($row, ['perished_count', 'perishedCount'], $payload['perishedCount'] ?? null),
@@ -985,9 +1120,9 @@ function upsert_incubation_batch(string $userId, array $item): void {
         'egg_count' => $item['count'] ?? null,
         'quantity' => $item['count'] ?? null,
         'status' => $item['status'] ?? null,
-        'coop_id' => $item['locationId'] ?? null,
-        'location_id' => $item['locationId'] ?? null,
-        'locationId' => $item['locationId'] ?? null,
+        'coop_id' => foreign_identifier_value('incubation_batches', 'coop_id', 'coops', $userId, $item['locationId'] ?? null),
+        'location_id' => foreign_identifier_value('incubation_batches', 'location_id', 'coops', $userId, $item['locationId'] ?? null),
+        'locationId' => foreign_identifier_value('incubation_batches', 'locationId', 'coops', $userId, $item['locationId'] ?? null),
         'notes' => $item['notes'] ?? null,
         'hatched_count' => $item['hatchedCount'] ?? null,
         'hatchedCount' => $item['hatchedCount'] ?? null,
@@ -1062,11 +1197,7 @@ function create_db_user(string $email, string $password, string $nickname): arra
     $values = [];
 
     $idColumn = id_column($table) ?? 'id';
-    $isAutoIncrementId = false;
-    if ($idColumn && ($column = table_column($table, $idColumn))) {
-        $extra = strtolower((string) ($column['Extra'] ?? $column['extra'] ?? ''));
-        $isAutoIncrementId = str_contains($extra, 'auto_increment');
-    }
+    $isAutoIncrementId = table_uses_auto_increment_id($table);
 
     $userId = $isAutoIncrementId ? null : bin2hex(random_bytes(16));
     if (!$isAutoIncrementId && $idColumn) {
@@ -1111,8 +1242,16 @@ function create_db_user(string $email, string $password, string $nickname): arra
     $statement = db()->prepare($sql);
     $statement->execute($params);
 
+    if ($userId === null) {
+        $userId = (string) db()->lastInsertId();
+        $row = $userId !== '' ? db_find_user_by_id($userId) : null;
+        if ($row) {
+            return map_user_row($row);
+        }
+    }
+
     return [
-        'id' => $userId,
+        'id' => (string) $userId,
         'email' => $email,
         'nickname' => $nickname,
         'passwordHash' => $values[$passwordColumn],
