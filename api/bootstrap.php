@@ -342,6 +342,82 @@ function column_accepts_string_identifier(string $table, string $column): bool {
     return preg_match('/char|text|json|blob|enum|set|binary|varbinary/', $type) === 1;
 }
 
+function normalize_date_column_value(string $table, string $column, $value) {
+    if ($value === null || $value === '') {
+        return null;
+    }
+
+    $type = column_type($table, $column);
+    if ($type === '') {
+        return $value;
+    }
+
+    $timestamp = strtotime((string) $value);
+    if ($timestamp === false) {
+        return $value;
+    }
+
+    if (preg_match('/\b(date)\b/', $type) === 1 && !str_contains($type, 'datetime') && !str_contains($type, 'timestamp')) {
+        return gmdate('Y-m-d', $timestamp);
+    }
+
+    if (str_contains($type, 'datetime') || str_contains($type, 'timestamp')) {
+        return gmdate('Y-m-d H:i:s', $timestamp);
+    }
+
+    return $value;
+}
+
+function identifier_candidates_from_row(string $table, array $row): array {
+    $payload = payload_for_table_row($table, $row);
+    $candidates = [
+        record_primary_id_from_row($table, $row),
+        app_record_id_from_row($table, $row),
+        column_value($row, ['uuid', 'id'], null),
+        $payload['id'] ?? null,
+    ];
+
+    return array_values(array_unique(array_filter(array_map(function ($value) {
+        if ($value === null || $value === '') {
+            return null;
+        }
+        return trim((string) $value);
+    }, $candidates))));
+}
+
+function related_record_matches_identifier(string $table, array $row, string $identifier): bool {
+    return in_array(trim($identifier), identifier_candidates_from_row($table, $row), true);
+}
+
+function related_record_app_id(string $table, array $row): string {
+    $appId = trim(app_record_id_from_row($table, $row));
+    if ($appId !== '') {
+        return $appId;
+    }
+
+    $primaryId = record_primary_id_from_row($table, $row);
+    return $primaryId === null ? '' : trim($primaryId);
+}
+
+function related_record_app_id_from_foreign_value(string $relatedTable, string $userId, $value): string {
+    if ($value === null || $value === '') {
+        return '';
+    }
+
+    $identifier = trim((string) $value);
+    if ($identifier === '') {
+        return '';
+    }
+
+    foreach (fetch_rows($relatedTable, $userId) as $row) {
+        if (related_record_matches_identifier($relatedTable, $row, $identifier)) {
+            return related_record_app_id($relatedTable, $row);
+        }
+    }
+
+    return $identifier;
+}
+
 function payload_for_table_row(string $table, array $row): array {
     $payloadColumn = payload_column($table);
     return $payloadColumn ? decode_json_value($row[$payloadColumn] ?? null, []) : [];
@@ -416,7 +492,17 @@ function resolve_related_record_primary_id(string $table, string $userId, ?strin
     }
 
     $row = find_existing_record_row($table, $userId, $appRecordId);
-    return $row ? record_primary_id_from_row($table, $row) : null;
+    if ($row) {
+        return record_primary_id_from_row($table, $row);
+    }
+
+    foreach (fetch_rows($table, $userId) as $row) {
+        if (related_record_matches_identifier($table, $row, $appRecordId)) {
+            return record_primary_id_from_row($table, $row);
+        }
+    }
+
+    return null;
 }
 
 function foreign_identifier_value(string $table, string $column, string $relatedTable, string $userId, $appRecordId): ?string {
@@ -747,7 +833,7 @@ function persist_row(string $table, string $recordId, string $userId, array $col
     $data = [];
     foreach ($columnValues as $column => $value) {
         if (isset($columns[$column])) {
-            $data[$column] = $value;
+            $data[$column] = normalize_date_column_value($table, $column, $value);
         }
     }
 
@@ -884,7 +970,7 @@ function map_bird_row_to_record(array $row): array {
         'id' => (string) ($payload['id'] ?? column_value($row, ['uuid', 'id'], '')),
         'name' => (string) column_value($row, ['name'], $payload['name'] ?? ''),
         'breed' => column_value($row, ['breed'], $payload['breed'] ?? null),
-        'locationId' => (string) ($payload['locationId'] ?? column_value($row, ['coop_id', 'location_id', 'locationId'], '')),
+        'locationId' => (string) ($payload['locationId'] ?? related_record_app_id_from_foreign_value('coops', (string) column_value($row, ['user_id', 'userId', 'account_id', 'owner_id'], ''), column_value($row, ['coop_id', 'location_id', 'locationId'], ''))),
         'status' => (string) column_value($row, ['status', 'appearance'], $payload['status'] ?? 'Healthy'),
         'photoUrl' => column_value($row, ['photo_url', 'photoUrl', 'image_url', 'imageUrl'], $payload['photoUrl'] ?? null),
         'notes' => column_value($row, ['notes'], $payload['notes'] ?? null),
@@ -917,9 +1003,9 @@ function map_egg_log_row_to_record(array $row): array {
     $payload = payload_for_table_row('egg_logs', $row);
     return [
         'id' => (string) ($payload['id'] ?? column_value($row, ['uuid', 'id'], '')),
-        'date' => iso_datetime((string) column_value($row, ['date', 'logged_at', 'logged_on'], $payload['date'] ?? '')),
+        'date' => iso_datetime((string) column_value($row, ['date', 'log_date', 'logged_at', 'logged_on'], $payload['date'] ?? '')),
         'count' => (int) column_value($row, ['count', 'egg_count', 'quantity'], $payload['count'] ?? 0),
-        'locationId' => (string) ($payload['locationId'] ?? column_value($row, ['coop_id', 'location_id', 'locationId'], '')),
+        'locationId' => (string) ($payload['locationId'] ?? related_record_app_id_from_foreign_value('coops', (string) column_value($row, ['user_id', 'userId', 'account_id', 'owner_id'], ''), column_value($row, ['coop_id', 'location_id', 'locationId'], ''))),
         'notes' => column_value($row, ['notes'], $payload['notes'] ?? null),
         'mode' => column_value($row, ['mode'], $payload['mode'] ?? null),
         'coopTemperature' => column_value($row, ['coop_temperature', 'temperature', 'coopTemperature'], $payload['coopTemperature'] ?? null),
@@ -929,6 +1015,7 @@ function map_egg_log_row_to_record(array $row): array {
 function upsert_egg_log(string $userId, array $item): void {
     persist_row('egg_logs', (string) $item['id'], $userId, array_filter([
         'date' => $item['date'] ?? null,
+        'log_date' => $item['date'] ?? null,
         'logged_at' => $item['date'] ?? null,
         'logged_on' => $item['date'] ?? null,
         'count' => $item['count'] ?? null,
@@ -969,9 +1056,9 @@ function map_feed_log_row_to_record(array $row, string $kind): array {
     if ($kind === 'medication') {
         return [
             'id' => (string) ($payload['id'] ?? column_value($row, ['uuid', 'id'], '')),
-            'date' => iso_datetime((string) column_value($row, ['date', 'logged_at', 'logged_on'], $payload['date'] ?? '')),
-            'henId' => $payload['henId'] ?? column_value($row, ['bird_id', 'hen_id', 'henId'], null),
-            'locationId' => (string) ($payload['locationId'] ?? column_value($row, ['coop_id', 'location_id', 'locationId'], '')),
+            'date' => iso_datetime((string) column_value($row, ['date', 'log_date', 'feed_date', 'logged_at', 'logged_on'], $payload['date'] ?? '')),
+            'henId' => $payload['henId'] ?? related_record_app_id_from_foreign_value('birds', (string) column_value($row, ['user_id', 'userId', 'account_id', 'owner_id'], ''), column_value($row, ['bird_id', 'hen_id', 'henId'], null)),
+            'locationId' => (string) ($payload['locationId'] ?? related_record_app_id_from_foreign_value('coops', (string) column_value($row, ['user_id', 'userId', 'account_id', 'owner_id'], ''), column_value($row, ['coop_id', 'location_id', 'locationId'], ''))),
             'medicationName' => (string) column_value($row, ['medication_name', 'medicationName', 'name'], $payload['medicationName'] ?? ''),
             'dosage' => (string) column_value($row, ['dosage'], $payload['dosage'] ?? ''),
             'notes' => column_value($row, ['notes'], $payload['notes'] ?? null),
@@ -980,12 +1067,12 @@ function map_feed_log_row_to_record(array $row, string $kind): array {
 
     return [
         'id' => (string) ($payload['id'] ?? column_value($row, ['uuid', 'id'], '')),
-        'date' => iso_datetime((string) column_value($row, ['date', 'logged_at', 'logged_on'], $payload['date'] ?? '')),
+        'date' => iso_datetime((string) column_value($row, ['date', 'log_date', 'feed_date', 'logged_at', 'logged_on'], $payload['date'] ?? '')),
         'amount' => (int) column_value($row, ['amount', 'quantity'], $payload['amount'] ?? 0),
         'cost' => column_value($row, ['cost', 'price'], $payload['cost'] ?? null),
         'weight' => column_value($row, ['weight'], $payload['weight'] ?? null),
         'feedType' => column_value($row, ['feed_type', 'feedType', 'type'], $payload['feedType'] ?? null),
-        'locationId' => (string) ($payload['locationId'] ?? column_value($row, ['coop_id', 'location_id', 'locationId'], '')),
+        'locationId' => (string) ($payload['locationId'] ?? related_record_app_id_from_foreign_value('coops', (string) column_value($row, ['user_id', 'userId', 'account_id', 'owner_id'], ''), column_value($row, ['coop_id', 'location_id', 'locationId'], ''))),
         'notes' => column_value($row, ['notes'], $payload['notes'] ?? null),
     ];
 }
@@ -998,8 +1085,10 @@ function upsert_feed_log(string $userId, array $item, string $kind): void {
     $typeColumn = first_existing_column('feed_logs', ['log_type', 'type', 'entry_type', 'kind', 'record_type', 'category']);
     $values = [
         'date' => $item['date'] ?? null,
+        'log_date' => $item['date'] ?? null,
         'logged_at' => $item['date'] ?? null,
         'logged_on' => $item['date'] ?? null,
+        'feed_date' => $item['date'] ?? null,
         'coop_id' => foreign_identifier_value('feed_logs', 'coop_id', 'coops', $userId, $item['locationId'] ?? null),
         'location_id' => foreign_identifier_value('feed_logs', 'location_id', 'coops', $userId, $item['locationId'] ?? null),
         'locationId' => foreign_identifier_value('feed_logs', 'locationId', 'coops', $userId, $item['locationId'] ?? null),
@@ -1055,7 +1144,7 @@ function map_sale_row_to_record(array $row): array {
     $payload = payload_for_table_row('sales', $row);
     return [
         'id' => (string) ($payload['id'] ?? column_value($row, ['uuid', 'id'], '')),
-        'date' => iso_datetime((string) column_value($row, ['date', 'sale_date', 'sold_at', 'logged_at'], $payload['date'] ?? '')),
+        'date' => iso_datetime((string) column_value($row, ['date', 'sale_date', 'sold_at', 'logged_at', 'log_date'], $payload['date'] ?? '')),
         'quantity' => (int) column_value($row, ['quantity', 'count'], $payload['quantity'] ?? 0),
         'price' => (float) column_value($row, ['price', 'amount', 'total'], $payload['price'] ?? 0),
         'itemType' => column_value($row, ['item_type', 'itemType', 'type'], $payload['itemType'] ?? null),
@@ -1069,6 +1158,7 @@ function upsert_sale(string $userId, array $item): void {
         'sale_date' => $item['date'] ?? null,
         'sold_at' => $item['date'] ?? null,
         'logged_at' => $item['date'] ?? null,
+        'log_date' => $item['date'] ?? null,
         'quantity' => $item['quantity'] ?? null,
         'count' => $item['quantity'] ?? null,
         'price' => $item['price'] ?? null,
@@ -1093,12 +1183,12 @@ function map_incubation_row_to_record(array $row): array {
 
     return [
         'id' => (string) ($payload['id'] ?? column_value($row, ['uuid', 'id'], '')),
-        'dateStarted' => iso_datetime((string) column_value($row, ['date_started', 'dateStarted', 'started_at'], $payload['dateStarted'] ?? '')),
-        'expectedHatchDate' => iso_datetime((string) column_value($row, ['expected_hatch_date', 'expectedHatchDate'], $payload['expectedHatchDate'] ?? '')),
+        'dateStarted' => iso_datetime((string) column_value($row, ['start_date', 'date_started', 'dateStarted', 'started_at'], $payload['dateStarted'] ?? '')),
+        'expectedHatchDate' => iso_datetime((string) column_value($row, ['anticipated_hatch_date', 'expected_hatch_date', 'expectedHatchDate'], $payload['expectedHatchDate'] ?? '')),
         'hatchDate' => iso_datetime(column_value($row, ['hatch_date', 'hatchDate'], $payload['hatchDate'] ?? null)),
         'count' => (int) column_value($row, ['count', 'egg_count', 'quantity'], $payload['count'] ?? 0),
         'status' => (string) column_value($row, ['status'], $payload['status'] ?? 'Incubating'),
-        'locationId' => (string) ($payload['locationId'] ?? column_value($row, ['coop_id', 'location_id', 'locationId'], '')),
+        'locationId' => (string) ($payload['locationId'] ?? related_record_app_id_from_foreign_value('coops', (string) column_value($row, ['user_id', 'userId', 'account_id', 'owner_id'], ''), column_value($row, ['coop_id', 'location_id', 'locationId'], ''))),
         'notes' => column_value($row, ['notes'], $payload['notes'] ?? null),
         'hatchedCount' => column_value($row, ['hatched_count', 'hatchedCount'], $payload['hatchedCount'] ?? null),
         'perishedCount' => column_value($row, ['perished_count', 'perishedCount'], $payload['perishedCount'] ?? null),
@@ -1109,9 +1199,11 @@ function map_incubation_row_to_record(array $row): array {
 
 function upsert_incubation_batch(string $userId, array $item): void {
     persist_row('incubation_batches', (string) $item['id'], $userId, array_filter([
+        'start_date' => $item['dateStarted'] ?? null,
         'date_started' => $item['dateStarted'] ?? null,
         'dateStarted' => $item['dateStarted'] ?? null,
         'started_at' => $item['dateStarted'] ?? null,
+        'anticipated_hatch_date' => $item['expectedHatchDate'] ?? null,
         'expected_hatch_date' => $item['expectedHatchDate'] ?? null,
         'expectedHatchDate' => $item['expectedHatchDate'] ?? null,
         'hatch_date' => $item['hatchDate'] ?? null,
