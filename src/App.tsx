@@ -16,16 +16,15 @@ import {
   BookOpen,
   CalendarDays,
   Camera,
-  Check,
   ChevronDown,
   Egg,
+  House,
   LogOut,
   MapPin,
   Pencil,
   PoundSterling,
   RefreshCw,
   Settings,
-  Sparkles,
   Stethoscope,
   Trash2,
   TrendingUp,
@@ -35,11 +34,19 @@ import {
 import { authApi, dataApi, SessionUser } from './api';
 import { CHICKEN_FACTS, CHICKEN_WIKI } from './constants';
 import { ChickBatch, EggLog, EggLogMode, FeedLog, Hen, HenAppearance, Location, MedicationLog, SaleLog } from './types';
+import demoHen2 from '../media/Layer 2.png';
+import demoHen3 from '../media/Layer 3.png';
+import demoHen4 from '../media/Layer 4.png';
+import demoHen5 from '../media/Layer 5.png';
+import demoHen6 from '../media/Layer 6.png';
+import demoHen7 from '../media/Layer 7.png';
+import demoHen8 from '../media/Layer 8.png';
+import demoHen9 from '../media/Layer 9.png';
 
-type TabKey = 'dashboard' | 'settings' | 'feed' | 'sales' | 'wiki';
-type SettingsMode = 'birds' | 'coops';
+type TabKey = 'dashboard' | 'settings' | 'sales' | 'wiki';
+type SettingsMode = 'birds' | 'coops' | 'feed';
 type LogMode = EggLogMode;
-type CalendarFilter = 'eggs' | 'sales' | 'feed' | 'meds';
+type CalendarFilter = 'eggs' | 'sales' | 'care' | 'chicks';
 
 type AppState = {
   locations: Location[];
@@ -61,13 +68,31 @@ const initialState: AppState = {
   chickBatches: [],
 };
 
+const DEMO_HENS: Hen[] = [
+  { id: 'demo-hen-1', name: 'Hen Solo', locationId: 'demo-coop-1', status: 'Healthy', photoUrl: demoHen2 },
+  { id: 'demo-hen-2', name: 'Meryl Cheep', locationId: 'demo-coop-1', status: 'Fluffy', photoUrl: demoHen3 },
+  { id: 'demo-hen-3', name: 'Yolko Ono', locationId: 'demo-coop-2', status: 'Broody', photoUrl: demoHen4 },
+  { id: 'demo-hen-4', name: 'Cluck Norris', locationId: 'demo-coop-2', status: 'Healthy', photoUrl: demoHen5 },
+  { id: 'demo-hen-5', name: 'Princess Lay-a', locationId: 'demo-coop-3', status: 'Speckled', photoUrl: demoHen6 },
+  { id: 'demo-hen-6', name: 'Eggatha Crispy', locationId: 'demo-coop-3', status: 'Scruffy', photoUrl: demoHen7 },
+  { id: 'demo-hen-7', name: 'Feather Locklear', locationId: 'demo-coop-1', status: 'Moulting', photoUrl: demoHen8 },
+  { id: 'demo-hen-8', name: 'Hennifer Lopez', locationId: 'demo-coop-2', status: 'Healthy', photoUrl: demoHen9 },
+];
+
+const DEMO_COOPS: Record<string, string> = {
+  'demo-coop-1': 'Cluckingham Palace',
+  'demo-coop-2': 'The Yolkshire Arms',
+  'demo-coop-3': 'Henley-on-Coop',
+};
+
+
 const appearanceOptions: HenAppearance[] = ['Healthy', 'Broody', 'Fluffy', 'Moulting', 'Speckled', 'Scruffy'];
 const coopTypes: Location['type'][] = ['Garden', 'Allotment', 'Other'];
 const calendarFilters: { key: CalendarFilter; label: string; icon: ReactNode }[] = [
   { key: 'eggs', label: 'Eggs', icon: <Egg size={14} /> },
   { key: 'sales', label: 'Sales', icon: <PoundSterling size={14} /> },
-  { key: 'feed', label: 'Feed', icon: <Utensils size={14} /> },
-  { key: 'meds', label: 'Meds', icon: <Stethoscope size={14} /> },
+  { key: 'care', label: 'Feed + Meds', icon: <Utensils size={14} /> },
+  { key: 'chicks', label: 'Chicks', icon: <Bird size={14} /> },
 ];
 
 export default function App() {
@@ -86,7 +111,6 @@ export default function App() {
   const [saveMessage, setSaveMessage] = useState('');
   const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
   const [logSheetOpen, setLogSheetOpen] = useState(false);
-  const [defaultLogMode, setDefaultLogMode] = useState<LogMode>('produce');
   const [splash, setSplash] = useState<{ mode: LogMode; at: number } | null>(null);
 
   useEffect(() => {
@@ -211,7 +235,7 @@ export default function App() {
               <Egg size={48} className="text-white" />
             </div>
             <div>
-              <h1 className="text-4xl font-serif italic font-bold text-violet-900">The Eggcountant</h1>
+              <h1 className="text-5xl font-serif italic font-bold text-violet-900">The Eggcountant</h1>
               <p className="text-violet-900/40 font-medium uppercase tracking-[0.2em] text-[10px] mt-2">Hostinger-friendly flock bookkeeping</p>
             </div>
           </div>
@@ -258,8 +282,8 @@ export default function App() {
       <header className="bg-white/90 backdrop-blur border-b border-violet-100 p-4 sticky top-0 z-30 shadow-sm">
         <div className="max-w-md mx-auto flex items-center justify-between gap-3">
           <div>
-            <h1 className="text-xl font-serif italic font-black tracking-tight">The Eggcountant</h1>
-            <p className="text-sm text-violet-900/55 truncate max-w-[220px]">{user.nickname || 'Welcome back'}, mind the eggs 🥚</p>
+            <h1 className="text-[2.35rem] leading-none font-serif italic font-black tracking-tight">The Eggcountant</h1>
+            <p className="text-sm text-violet-900/55 max-w-[240px]">Just here for the crack, mind the eggs 🥚</p>
           </div>
           <button onClick={() => setLogoutConfirmOpen(true)} className="p-3 rounded-2xl text-violet-400 hover:text-rose-500 hover:bg-rose-50 transition-colors">
             <LogOut size={18} />
@@ -282,6 +306,7 @@ export default function App() {
                 medicationLogs={medicationLogs}
                 locations={locations}
                 chickBatches={chickBatches}
+                onOpenWiki={() => setActiveTab('wiki')}
               />
             )}
             {activeTab === 'settings' && (
@@ -290,19 +315,10 @@ export default function App() {
                 setMode={setSettingsMode}
                 hens={hens}
                 locations={locations}
-                chickBatches={chickBatches}
                 onSaveHen={(item) => upsert('hens', 'hens', item)}
                 onDeleteHen={(id) => remove('hens', 'hens', id)}
                 onSaveLocation={(item) => upsert('locations', 'locations', item)}
                 onDeleteLocation={(id) => remove('locations', 'locations', id)}
-                onSaveBatch={(item) => upsert('chickBatches', 'chickBatches', item)}
-                onDeleteBatch={(id) => remove('chickBatches', 'chickBatches', id)}
-              />
-            )}
-            {activeTab === 'feed' && (
-              <FeedAndMedTracker
-                locations={locations}
-                hens={hens}
                 feedLogs={feedLogs}
                 medicationLogs={medicationLogs}
                 onSaveFeed={(item) => upsert('feedLogs', 'feedLogs', item)}
@@ -325,29 +341,25 @@ export default function App() {
       </button>
 
       <nav className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur border-t border-violet-100 px-4 py-3 z-20 shadow-[0_-4px_20px_rgba(124,58,237,0.05)]">
-        <div className="max-w-md mx-auto grid grid-cols-6 items-end gap-2">
-          <NavButton icon={<TrendingUp size={20} />} label="Home" active={activeTab === 'dashboard'} onClick={() => setActiveTab('dashboard')} />
-          <NavButton icon={<Settings size={20} />} label="Settings" active={activeTab === 'settings'} onClick={() => setActiveTab('settings')} />
+        <div className="max-w-md mx-auto grid grid-cols-[1fr_1fr_88px_1fr] items-end gap-2">
+          <NavButton icon={<House size={20} />} label="Home" active={activeTab === 'dashboard'} onClick={() => setActiveTab('dashboard')} />
           <NavButton icon={<PoundSterling size={20} />} label="Sales" active={activeTab === 'sales'} onClick={() => setActiveTab('sales')} />
           <div />
-          <NavButton icon={<Utensils size={20} />} label="Feed" active={activeTab === 'feed'} onClick={() => setActiveTab('feed')} />
-          <NavButton icon={<BookOpen size={20} />} label="Wiki" active={activeTab === 'wiki'} onClick={() => setActiveTab('wiki')} />
+          <NavButton icon={<Settings size={20} />} label="Settings" active={activeTab === 'settings'} onClick={() => setActiveTab('settings')} />
         </div>
       </nav>
 
       {logSheetOpen && (
         <LogSheet
           locations={locations}
-          defaultMode={defaultLogMode}
+          defaultMode="produce"
           onClose={() => setLogSheetOpen(false)}
           onSaveEgg={async (item, mode) => {
             await upsert('eggLogs', 'eggLogs', item);
-            setDefaultLogMode('produce');
             setSplash({ mode, at: Date.now() });
           }}
           onSaveBatch={async (item) => {
             await upsert('chickBatches', 'chickBatches', item);
-            setDefaultLogMode('breed');
             setSplash({ mode: 'breed', at: Date.now() });
           }}
         />
@@ -375,6 +387,7 @@ function Dashboard({
   medicationLogs,
   locations,
   chickBatches,
+  onOpenWiki,
 }: {
   eggLogs: EggLog[];
   saleLogs: SaleLog[];
@@ -382,17 +395,17 @@ function Dashboard({
   medicationLogs: MedicationLog[];
   locations: Location[];
   chickBatches: ChickBatch[];
+  onOpenWiki: () => void;
 }) {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [calendarFilter, setCalendarFilter] = useState<CalendarFilter>('eggs');
   const days = useMemo(() => eachDayOfInterval({ start: startOfMonth(selectedDate), end: endOfMonth(selectedDate) }), [selectedDate]);
   const selectedKey = format(selectedDate, 'yyyy-MM-dd');
-  const today = format(new Date(), 'yyyy-MM-dd');
-  const todayEggs = eggLogs.filter((log) => log.date.startsWith(today)).reduce((sum, log) => sum + log.count, 0);
   const totalEggs = eggLogs.reduce((sum, log) => sum + log.count, 0);
   const totalSold = saleLogs.reduce((sum, log) => sum + log.quantity, 0);
   const revenue = saleLogs.reduce((sum, log) => sum + log.price, 0);
   const costs = feedLogs.reduce((sum, log) => sum + (log.cost || 0), 0);
+  const latestLay = eggLogs.length > 0 ? eggLogs[0].count : 0;
 
   const chartData = Array.from({ length: 14 }).map((_, index) => {
     const day = subDays(new Date(), 13 - index);
@@ -411,10 +424,10 @@ function Dashboard({
   return (
     <div className="space-y-4">
       <section className="grid grid-cols-2 gap-3">
-        <StatCard label="Today's lay" value={todayEggs} icon={<Egg size={18} className="text-violet-500" />} />
-        <StatCard label="Total eggs" value={totalEggs} icon={<Bird size={18} className="text-violet-500" />} />
-        <StatCard label="Sold" value={totalSold} icon={<PoundSterling size={18} className="text-violet-500" />} />
-        <StatCard label="Profit-ish" value={`£${(revenue - costs).toFixed(2)}`} icon={<TrendingUp size={18} className="text-violet-500" />} />
+        <StatCard label="Latest Haul" value={latestLay} subtitle="Most recent lay" icon={<Egg size={16} className="text-violet-500" />} />
+        <StatCard label="Total Haul" value={totalEggs} subtitle="All eggs logged" icon={<Bird size={16} className="text-violet-500" />} />
+        <StatCard label="Total Sold" value={totalSold} subtitle="Eggs out the door" icon={<PoundSterling size={16} className="text-violet-500" />} />
+        <StatCard label="Profit-ish" value={`£${(revenue - costs).toFixed(2)}`} subtitle="Sales minus feed" icon={<TrendingUp size={16} className="text-violet-500" />} />
       </section>
 
       <Card>
@@ -454,6 +467,7 @@ function Dashboard({
         saleLogs={saleLogs}
         feedLogs={feedLogs}
         medicationLogs={medicationLogs}
+        chickBatches={chickBatches}
       />
 
       <Card>
@@ -484,7 +498,7 @@ function Dashboard({
             <div key={log.id}><TimelineRow icon={<Stethoscope size={16} />} tone="bg-rose-50 text-rose-700" title={log.medicationName} subtitle={log.dosage} /></div>
           ))}
           {selectedIncubationStarts.map((batch) => (
-            <div key={batch.id}><TimelineRow icon={<Bird size={16} />} tone="bg-sky-50 text-sky-700" title={`Incubation started: ${batch.count} eggs`} subtitle={`Expected hatch ${format(parseISO(batch.expectedHatchDate), 'd MMM')}`} /></div>
+            <div key={batch.id}><TimelineRow icon={<Bird size={16} />} tone="bg-sky-50 text-sky-700" title={`Slow Cooker started: ${batch.count} eggs`} subtitle={`Expected hatch ${format(parseISO(batch.expectedHatchDate), 'd MMM')}`} /></div>
           ))}
           {selectedEggLogs.length === 0 && selectedSales.length === 0 && selectedFeed.length === 0 && selectedMeds.length === 0 && selectedIncubationStarts.length === 0 && (
             <EmptyState icon={<CalendarDays size={20} />} text="Quiet day. Suspiciously efficient." />
@@ -493,7 +507,7 @@ function Dashboard({
       </Card>
 
       <Card>
-        <h3 className="text-lg font-serif italic mb-4">Production by coop</h3>
+        <h3 className="text-lg font-serif italic mb-4">It's not a competition...but...</h3>
         <div className="space-y-4">
           {locations.length === 0 ? <EmptyState icon={<MapPin size={22} />} text="No coops yet. Add one in Settings." /> : locations.map((location) => {
             const eggs = eggLogs.filter((log) => log.locationId === location.id).reduce((sum, log) => sum + log.count, 0);
@@ -515,12 +529,22 @@ function Dashboard({
 
       {chickBatches.length > 0 && (
         <Card>
-          <h3 className="text-lg font-serif italic mb-4">Incubation watch</h3>
+          <h3 className="text-lg font-serif italic mb-4">Slow Cooker</h3>
           <div className="space-y-3">
             {chickBatches.map((batch) => <div key={batch.id}><ChickBatchTile batch={batch} compact /></div>)}
           </div>
         </Card>
       )}
+
+      <Card className="p-4">
+        <button onClick={onOpenWiki} className="w-full flex items-center justify-between gap-3 text-left rounded-[24px] bg-violet-50 px-4 py-4 text-violet-700">
+          <div>
+            <p className="text-[10px] uppercase tracking-[0.2em] text-violet-900/40 font-bold">Hen Wiki</p>
+            <p className="font-serif italic font-bold text-lg">Facts, puns, and chicken nerdery</p>
+          </div>
+          <BookOpen size={22} />
+        </button>
+      </Card>
     </div>
   );
 }
@@ -535,6 +559,7 @@ function CalendarCard({
   saleLogs,
   feedLogs,
   medicationLogs,
+  chickBatches,
 }: {
   selectedDate: Date;
   onSelectDate: (date: Date) => void;
@@ -545,19 +570,20 @@ function CalendarCard({
   saleLogs: SaleLog[];
   feedLogs: FeedLog[];
   medicationLogs: MedicationLog[];
+  chickBatches: ChickBatch[];
 }) {
   const hasEvent = (key: string) => {
     if (calendarFilter === 'eggs') return eggLogs.some((log) => log.date.startsWith(key));
     if (calendarFilter === 'sales') return saleLogs.some((log) => log.date.startsWith(key));
-    if (calendarFilter === 'feed') return feedLogs.some((log) => log.date.startsWith(key));
-    return medicationLogs.some((log) => log.date.startsWith(key));
+    if (calendarFilter === 'care') return feedLogs.some((log) => log.date.startsWith(key)) || medicationLogs.some((log) => log.date.startsWith(key));
+    return chickBatches.some((batch) => batch.dateStarted.startsWith(key));
   };
 
   const eventValue = (key: string) => {
     if (calendarFilter === 'eggs') return eggLogs.filter((log) => log.date.startsWith(key)).reduce((sum, log) => sum + log.count, 0);
     if (calendarFilter === 'sales') return saleLogs.filter((log) => log.date.startsWith(key)).length;
-    if (calendarFilter === 'feed') return feedLogs.filter((log) => log.date.startsWith(key)).length;
-    return medicationLogs.filter((log) => log.date.startsWith(key)).length;
+    if (calendarFilter === 'care') return feedLogs.filter((log) => log.date.startsWith(key)).length + medicationLogs.filter((log) => log.date.startsWith(key)).length;
+    return chickBatches.filter((batch) => batch.dateStarted.startsWith(key)).length;
   };
 
   return (
@@ -602,36 +628,62 @@ function SettingsPage({
   setMode,
   hens,
   locations,
-  chickBatches,
+  feedLogs,
+  medicationLogs,
   onSaveHen,
   onDeleteHen,
   onSaveLocation,
   onDeleteLocation,
-  onSaveBatch,
-  onDeleteBatch,
+  onSaveFeed,
+  onDeleteFeed,
+  onSaveMedication,
+  onDeleteMedication,
 }: {
   mode: SettingsMode;
   setMode: (mode: SettingsMode) => void;
   hens: Hen[];
   locations: Location[];
-  chickBatches: ChickBatch[];
+  feedLogs: FeedLog[];
+  medicationLogs: MedicationLog[];
   onSaveHen: (item: Hen) => Promise<void>;
   onDeleteHen: (id: string) => Promise<void>;
   onSaveLocation: (item: Location) => Promise<void>;
   onDeleteLocation: (id: string) => Promise<void>;
-  onSaveBatch: (item: ChickBatch) => Promise<void>;
-  onDeleteBatch: (id: string) => Promise<void>;
+  onSaveFeed: (item: FeedLog) => Promise<void>;
+  onDeleteFeed: (id: string) => Promise<void>;
+  onSaveMedication: (item: MedicationLog) => Promise<void>;
+  onDeleteMedication: (id: string) => Promise<void>;
 }) {
+  const sections = [
+    { key: 'birds' as const, label: 'Birds', icon: <Bird size={16} /> },
+    { key: 'coops' as const, label: 'Coops', icon: <MapPin size={16} /> },
+    { key: 'feed' as const, label: 'Feed', icon: <Utensils size={16} /> },
+  ];
+
   return (
     <div className="space-y-4">
-      <div className="flex bg-white p-1 rounded-2xl border border-violet-100 shadow-sm">
-        <button onClick={() => setMode('birds')} className={`flex-1 py-3 rounded-xl text-sm font-bold ${mode === 'birds' ? 'bg-violet-600 text-white' : 'text-violet-900/40'}`}>Birds</button>
-        <button onClick={() => setMode('coops')} className={`flex-1 py-3 rounded-xl text-sm font-bold ${mode === 'coops' ? 'bg-violet-600 text-white' : 'text-violet-900/40'}`}>Coops</button>
+      <div className="grid grid-cols-3 gap-2">
+        {sections.map((section) => (
+          <button key={section.key} onClick={() => setMode(section.key)} className={`rounded-[26px] border px-3 py-4 text-sm font-bold flex flex-col items-center gap-2 ${mode === section.key ? 'bg-violet-600 text-white border-violet-600 shadow-sm' : 'bg-white text-violet-700 border-violet-100'}`}>
+            <span className={`w-9 h-9 rounded-2xl flex items-center justify-center ${mode === section.key ? 'bg-white/15' : 'bg-violet-50 text-violet-600'}`}>{section.icon}</span>
+            {section.label}
+          </button>
+        ))}
       </div>
-      {mode === 'birds' ? (
-        <BirdSettings hens={hens} locations={locations} chickBatches={chickBatches} onSaveHen={onSaveHen} onDeleteHen={onDeleteHen} onSaveBatch={onSaveBatch} onDeleteBatch={onDeleteBatch} />
-      ) : (
-        <CoopSettings locations={locations} onSaveLocation={onSaveLocation} onDeleteLocation={onDeleteLocation} />
+
+      {mode === 'birds' && <BirdSettings hens={hens} locations={locations} onSaveHen={onSaveHen} onDeleteHen={onDeleteHen} />}
+      {mode === 'coops' && <CoopSettings locations={locations} onSaveLocation={onSaveLocation} onDeleteLocation={onDeleteLocation} />}
+      {mode === 'feed' && (
+        <FeedAndMedTracker
+          locations={locations}
+          hens={hens}
+          feedLogs={feedLogs}
+          medicationLogs={medicationLogs}
+          onSaveFeed={onSaveFeed}
+          onDeleteFeed={onDeleteFeed}
+          onSaveMedication={onSaveMedication}
+          onDeleteMedication={onDeleteMedication}
+        />
       )}
     </div>
   );
@@ -640,39 +692,25 @@ function SettingsPage({
 function BirdSettings({
   hens,
   locations,
-  chickBatches,
   onSaveHen,
   onDeleteHen,
-  onSaveBatch,
-  onDeleteBatch,
 }: {
   hens: Hen[];
   locations: Location[];
-  chickBatches: ChickBatch[];
   onSaveHen: (item: Hen) => Promise<void>;
   onDeleteHen: (id: string) => Promise<void>;
-  onSaveBatch: (item: ChickBatch) => Promise<void>;
-  onDeleteBatch: (id: string) => Promise<void>;
 }) {
-  const [subMode, setSubMode] = useState<'flock' | 'chicks'>('flock');
   const [editingHenId, setEditingHenId] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [locationId, setLocationId] = useState(locations[0]?.id || '');
   const [photoUrl, setPhotoUrl] = useState('');
   const [status, setStatus] = useState<HenAppearance>('Healthy');
-  const [batchCount, setBatchCount] = useState(6);
-  const [batchLocationId, setBatchLocationId] = useState(locations[0]?.id || '');
-  const [batchDate, setBatchDate] = useState(format(new Date(), 'yyyy-MM-dd'));
-  const [editingBatchId, setEditingBatchId] = useState<string | null>(null);
-  const [batchStatus, setBatchStatus] = useState<ChickBatch['status']>('Incubating');
-  const [hatchedCount, setHatchedCount] = useState(0);
-  const [perishedCount, setPerishedCount] = useState(0);
-  const [hatchDate, setHatchDate] = useState('');
+  const demoMode = hens.length === 0;
+  const displayHens = demoMode ? DEMO_HENS : hens;
 
   useEffect(() => {
     if (!locationId && locations[0]) setLocationId(locations[0].id);
-    if (!batchLocationId && locations[0]) setBatchLocationId(locations[0].id);
-  }, [locationId, batchLocationId, locations]);
+  }, [locationId, locations]);
 
   const resetHenForm = () => {
     setEditingHenId(null);
@@ -681,34 +719,21 @@ function BirdSettings({
     setStatus('Healthy');
   };
 
-  const resetBatchForm = () => {
-    setEditingBatchId(null);
-    setBatchCount(6);
-    setBatchDate(format(new Date(), 'yyyy-MM-dd'));
-    setBatchStatus('Incubating');
-    setHatchedCount(0);
-    setPerishedCount(0);
-    setHatchDate('');
-  };
-
   return (
     <div className="space-y-4">
-      <div className="flex bg-white p-1 rounded-2xl border border-violet-100 shadow-sm">
-        <button onClick={() => setSubMode('flock')} className={`flex-1 py-3 rounded-xl text-sm font-bold ${subMode === 'flock' ? 'bg-violet-600 text-white' : 'text-violet-900/40'}`}>Flock</button>
-        <button onClick={() => setSubMode('chicks')} className={`flex-1 py-3 rounded-xl text-sm font-bold ${subMode === 'chicks' ? 'bg-violet-600 text-white' : 'text-violet-900/40'}`}>Do Not Cook!</button>
-      </div>
-
-      {subMode === 'flock' ? (
-        <>
-          <Card>
-            <div className="space-y-4">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <h2 className="text-2xl font-serif italic font-bold">Add a Bird</h2>
-                  <p className="text-sm text-violet-900/50">Total birds: {hens.length}</p>
-                </div>
-                {editingHenId && <button onClick={resetHenForm} className="text-xs font-bold px-3 py-2 rounded-xl bg-violet-50 text-violet-600">Cancel edit</button>}
-              </div>
+      <Card>
+        <div className="space-y-4">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h2 className="text-2xl font-serif italic font-bold">Add a Little Clucker</h2>
+              <p className="text-sm text-violet-900/50">Total birds: {hens.length}</p>
+            </div>
+            {editingHenId && <button onClick={resetHenForm} className="text-xs font-bold px-3 py-2 rounded-xl bg-violet-50 text-violet-600">Cancel edit</button>}
+          </div>
+          {locations.length === 0 ? (
+            <div className="rounded-2xl bg-amber-50 text-amber-800 px-4 py-3 text-sm">Add a coop first, then your little cluckers can move in.</div>
+          ) : (
+            <>
               <Field label="Name"><input value={name} onChange={(e) => setName(e.target.value)} className={inputClass} placeholder="Henrietta" /></Field>
               <Field label="Appearance"><Select value={status} onChange={(e) => setStatus(e.target.value as HenAppearance)}>{appearanceOptions.map((option) => <option key={option}>{option}</option>)}</Select></Field>
               <Field label="Coop"><Select value={locationId} onChange={(e) => setLocationId(e.target.value)}>{locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</Select></Field>
@@ -718,100 +743,46 @@ function BirdSettings({
                 await onSaveHen({ id: editingHenId || crypto.randomUUID(), name: name.trim(), locationId, status, photoUrl: photoUrl || undefined });
                 resetHenForm();
               }} className="w-full py-4 bg-violet-600 text-white rounded-2xl font-bold">{editingHenId ? 'Save bird' : "Let's Cluckin' Go!"}</button>
-            </div>
-          </Card>
+            </>
+          )}
+        </div>
+      </Card>
 
-          <div className="grid grid-cols-2 gap-3">
-            {hens.length === 0 ? <div className="col-span-2"><Card><EmptyState icon={<Bird size={22} />} text="No birds yet. Bit suspicious, honestly." /></Card></div> : hens.map((hen) => (
-              <Card key={hen.id} className="p-3">
-                <div className="relative">
-                  <div className="absolute top-0 right-0 flex gap-1">
-                    <button onClick={() => {
-                      setEditingHenId(hen.id);
-                      setName(hen.name);
-                      setLocationId(hen.locationId);
-                      setPhotoUrl(hen.photoUrl || '');
-                      setStatus(hen.status);
-                    }} className="p-1.5 bg-white/80 text-violet-600 rounded-lg"><Pencil size={12} /></button>
-                    <button onClick={() => onDeleteHen(hen.id)} className="p-1.5 bg-white/80 text-rose-500 rounded-lg"><Trash2 size={12} /></button>
-                  </div>
-                  <div className="aspect-square rounded-2xl overflow-hidden bg-violet-50 mb-3 flex items-center justify-center">
-                    {hen.photoUrl ? <img src={hen.photoUrl} className="w-full h-full object-cover" /> : <Bird className="text-violet-300" />}
-                  </div>
-                  <p className="font-bold text-sm">{hen.name}</p>
-                  <p className="text-[10px] uppercase tracking-widest text-violet-900/40 font-bold">{locations.find((location) => location.id === hen.locationId)?.name}</p>
-                  <div className="mt-2 inline-block text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-full bg-violet-50 text-violet-700">{hen.status}</div>
-                </div>
-              </Card>
-            ))}
+      {demoMode && (
+        <Card className="p-4 bg-violet-50/70 border-violet-200">
+          <div className="space-y-1">
+            <p className="text-[10px] uppercase tracking-[0.2em] text-violet-900/40 font-bold">Demo flock</p>
+            <p className="text-sm text-violet-900/65">Showing 8 fake hens for fresh installs. Real birds will replace them once you add your own.</p>
           </div>
-        </>
-      ) : (
-        <>
-          <Card>
-            <div className="space-y-4">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <h2 className="text-2xl font-serif italic font-bold">Do Not Cook!</h2>
-                  <p className="text-sm text-violet-900/50">Start or edit an incubation batch.</p>
-                </div>
-                {editingBatchId && <button onClick={resetBatchForm} className="text-xs font-bold px-3 py-2 rounded-xl bg-violet-50 text-violet-600">Cancel edit</button>}
-              </div>
-              <Field label="Egg count"><Stepper value={batchCount} onChange={setBatchCount} min={1} max={48} /></Field>
-              <Field label="Start date"><DateButton value={batchDate} onChange={setBatchDate} /></Field>
-              <Field label="Coop"><Select value={batchLocationId} onChange={(e) => setBatchLocationId(e.target.value)}>{locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</Select></Field>
-              {editingBatchId && (
-                <>
-                  <Field label="Result"><div className="grid grid-cols-3 gap-2">{(['Incubating', 'Hatched', 'Failed'] as const).map((option) => <button key={option} type="button" onClick={() => setBatchStatus(option)} className={`rounded-2xl py-3 text-xs font-bold border ${batchStatus === option ? 'bg-violet-600 text-white border-violet-600' : 'bg-violet-50 text-violet-700 border-violet-100'}`}>{option}</button>)}</div></Field>
-                  <div className="grid grid-cols-2 gap-3">
-                    <Field label="Hatched"><Stepper value={hatchedCount} onChange={setHatchedCount} min={0} max={batchCount} /></Field>
-                    <Field label="Perished"><Stepper value={perishedCount} onChange={setPerishedCount} min={0} max={batchCount} /></Field>
-                  </div>
-                  <Field label="Hatch date"><DateButton value={hatchDate || batchDate} onChange={setHatchDate} /></Field>
-                </>
-              )}
-              <button onClick={async () => {
-                if (!batchLocationId || batchCount < 1) return;
-                const started = new Date(batchDate);
-                await onSaveBatch({
-                  id: editingBatchId || crypto.randomUUID(),
-                  count: batchCount,
-                  dateStarted: started.toISOString(),
-                  expectedHatchDate: addDays(started, 21).toISOString(),
-                  locationId: batchLocationId,
-                  status: batchStatus,
-                  chicks: [],
-                  hatchedCount,
-                  perishedCount,
-                  hatchDate: hatchDate ? new Date(hatchDate).toISOString() : undefined,
-                });
-                resetBatchForm();
-              }} className="w-full py-4 bg-violet-600 text-white rounded-2xl font-bold">{editingBatchId ? 'Save batch' : 'Incubate'}</button>
-            </div>
-          </Card>
-
-          <div className="space-y-3">
-            {chickBatches.length === 0 ? <Card><EmptyState icon={<Egg size={22} />} text="No chick batches yet." /></Card> : chickBatches.map((batch) => (
-              <div key={batch.id} className="relative">
-                <ChickBatchTile batch={batch} />
-                <div className="absolute top-4 right-4 flex gap-2">
-                  <button onClick={() => {
-                    setEditingBatchId(batch.id);
-                    setBatchCount(batch.count);
-                    setBatchDate(format(parseISO(batch.dateStarted), 'yyyy-MM-dd'));
-                    setBatchLocationId(batch.locationId);
-                    setBatchStatus(batch.status);
-                    setHatchedCount(batch.hatchedCount || 0);
-                    setPerishedCount(batch.perishedCount || 0);
-                    setHatchDate(batch.hatchDate ? format(parseISO(batch.hatchDate), 'yyyy-MM-dd') : '');
-                  }} className="p-2 rounded-xl bg-white text-violet-600 shadow-sm"><Pencil size={14} /></button>
-                  <button onClick={() => onDeleteBatch(batch.id)} className="p-2 rounded-xl bg-white text-rose-500 shadow-sm"><Trash2 size={14} /></button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </>
+        </Card>
       )}
+
+      <div className="grid grid-cols-2 gap-3">
+        {displayHens.map((hen) => (
+          <Card key={hen.id} className="p-3">
+            <div className="relative">
+              {!demoMode && (
+                <div className="absolute top-0 right-0 flex gap-1">
+                  <button onClick={() => {
+                    setEditingHenId(hen.id);
+                    setName(hen.name);
+                    setLocationId(hen.locationId);
+                    setPhotoUrl(hen.photoUrl || '');
+                    setStatus(hen.status);
+                  }} className="p-1.5 bg-white/80 text-violet-600 rounded-lg"><Pencil size={12} /></button>
+                  <button onClick={() => onDeleteHen(hen.id)} className="p-1.5 bg-white/80 text-rose-500 rounded-lg"><Trash2 size={12} /></button>
+                </div>
+              )}
+              <div className="aspect-square rounded-2xl overflow-hidden bg-violet-50 mb-3 flex items-center justify-center">
+                {hen.photoUrl ? <img src={hen.photoUrl} className="w-full h-full object-cover" /> : <Bird className="text-violet-300" />}
+              </div>
+              <p className="font-bold text-sm">{hen.name}</p>
+              <p className="text-[10px] uppercase tracking-widest text-violet-900/40 font-bold">{demoMode ? DEMO_COOPS[hen.locationId] : locations.find((location) => location.id === hen.locationId)?.name}</p>
+              <div className="mt-2 inline-block text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-full bg-violet-50 text-violet-700">{hen.status}</div>
+            </div>
+          </Card>
+        ))}
+      </div>
     </div>
   );
 }
@@ -1029,9 +1000,12 @@ function ChickenWiki() {
     <div className="space-y-4">
       <Card className="bg-violet-600 text-white border-violet-600">
         <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <p className="text-[10px] uppercase tracking-[0.2em] opacity-70 font-bold">{factLabel}</p>
-            <button onClick={() => setFactIndex(Math.floor(Math.random() * CHICKEN_FACTS.length))} className="px-3 py-2 rounded-xl bg-white/15 text-xs font-bold">Another one</button>
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-[10px] uppercase tracking-[0.2em] opacity-70 font-bold">Pun / fact card</p>
+              <p className="text-sm opacity-80">{factLabel}</p>
+            </div>
+            <button onClick={() => setFactIndex(Math.floor(Math.random() * CHICKEN_FACTS.length))} className="px-3 py-2 rounded-xl bg-white/15 text-xs font-bold shrink-0">Another one</button>
           </div>
           <p className="text-lg font-serif italic leading-relaxed">“{CHICKEN_FACTS[factIndex]}”</p>
         </div>
@@ -1080,8 +1054,8 @@ function LogSheet({
   }, [locationId, locations]);
 
   return (
-    <div className="fixed inset-0 bg-violet-950/30 z-50 flex items-end">
-      <div className="w-full max-w-md mx-auto bg-white rounded-t-[32px] p-5 space-y-4 shadow-2xl">
+    <div className="fixed inset-0 bg-violet-950/30 z-50 flex items-end justify-center px-3 pt-10 pb-6">
+      <div className="w-full max-w-md bg-white rounded-[32px] p-5 space-y-4 shadow-2xl max-h-[82vh] overflow-y-auto">
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-2xl font-serif italic font-bold">Log today</h2>
@@ -1151,8 +1125,8 @@ function LogSplash({ mode }: { mode: LogMode }) {
 
 function ConfirmSheet({ title, body, confirmText, onCancel, onConfirm }: { title: string; body: string; confirmText: string; onCancel: () => void; onConfirm: () => void | Promise<void> }) {
   return (
-    <div className="fixed inset-0 bg-violet-950/30 z-50 flex items-end">
-      <div className="w-full max-w-md mx-auto bg-white rounded-t-[32px] p-5 space-y-4 shadow-2xl">
+    <div className="fixed inset-0 bg-violet-950/30 z-50 flex items-end justify-center px-3 pt-10 pb-6">
+      <div className="w-full max-w-md bg-white rounded-[32px] p-5 space-y-4 shadow-2xl max-h-[82vh] overflow-y-auto">
         <h3 className="text-2xl font-serif italic font-bold">{title}</h3>
         <p className="text-sm text-violet-900/55">{body}</p>
         <div className="grid grid-cols-2 gap-3">
@@ -1229,8 +1203,8 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
   return <label className="block space-y-2"><span className="text-xs font-bold uppercase tracking-widest text-violet-900/40 px-1">{label}</span>{children}</label>;
 }
 
-function StatCard({ label, value, icon }: { label: string; value: string | number; icon: ReactNode }) {
-  return <Card className="p-3 min-h-[88px]"><div className="flex justify-between items-start gap-2"><span className="text-[10px] uppercase tracking-widest font-bold text-violet-900/40">{label}</span><div className="p-1.5 bg-violet-50 rounded-lg">{icon}</div></div><div className="text-xl font-serif italic font-bold mt-3 leading-none">{value}</div></Card>;
+function StatCard({ label, value, subtitle, icon }: { label: string; value: string | number; subtitle?: string; icon: ReactNode }) {
+  return <Card className="p-3 min-h-[62px]"><div className="flex justify-between items-start gap-2"><div><span className="text-[10px] uppercase tracking-widest font-bold text-violet-900/40">{label}</span>{subtitle && <p className="text-[10px] text-violet-900/35 mt-1 leading-tight">{subtitle}</p>}</div><div className="p-1.5 bg-violet-50 rounded-lg">{icon}</div></div><div className="text-lg font-serif italic font-bold mt-2 leading-none">{value}</div></Card>;
 }
 
 function MiniStat({ label, value, highlight = false }: { label: string; value: string | number; highlight?: boolean }) {
