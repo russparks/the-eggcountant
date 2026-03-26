@@ -18,6 +18,8 @@ import {
   Camera,
   NotebookPen,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   Egg,
   House,
   MapPin,
@@ -28,6 +30,7 @@ import {
   Stethoscope,
   Trash2,
   TrendingUp,
+  Trophy,
   Utensils,
   Wheat,
   X,
@@ -356,6 +359,7 @@ export default function App() {
                 feedLogs={feedLogs}
                 medicationLogs={medicationLogs}
                 locations={locations}
+                hens={hens}
                 chickBatches={chickBatches}
                 onOpenWiki={() => setActiveTab('wiki')}
               />
@@ -396,7 +400,7 @@ export default function App() {
       <button
         onClick={() => setLogSheetOpen(true)}
         aria-label="Log eggs"
-        className="fixed bottom-[-22px] left-1/2 -translate-x-1/2 z-40 w-[88px] h-[112px] egg-fab bg-violet-600 text-white shadow-[0_18px_40px_rgba(124,58,237,0.35)] flex items-center justify-center border-4 border-[#F8F7FF]"
+        className="fixed bottom-[3px] left-1/2 -translate-x-1/2 z-40 w-[88px] h-[112px] egg-fab bg-violet-600 text-white shadow-[0_18px_40px_rgba(124,58,237,0.35)] flex items-center justify-center border-4 border-[#F8F7FF]"
       >
         <Egg size={38} />
       </button>
@@ -414,6 +418,7 @@ export default function App() {
       {logSheetOpen && (
         <LogSheet
           locations={locations}
+          hens={hens}
           defaultMode="produce"
           onClose={() => setLogSheetOpen(false)}
           onSaveEgg={async (item, mode) => {
@@ -458,6 +463,7 @@ function Dashboard({
   feedLogs,
   medicationLogs,
   locations,
+  hens,
   chickBatches,
   onOpenWiki,
 }: {
@@ -466,16 +472,17 @@ function Dashboard({
   feedLogs: FeedLog[];
   medicationLogs: MedicationLog[];
   locations: Location[];
+  hens: Hen[];
   chickBatches: ChickBatch[];
   onOpenWiki: () => void;
 }) {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [calendarFilter, setCalendarFilter] = useState<CalendarFilter>('eggs');
+  const [flockView, setFlockView] = useState<'hen' | 'coop'>('hen');
   const totalEggs = eggLogs.reduce((sum, log) => sum + log.count, 0);
   const totalSold = saleLogs.reduce((sum, log) => sum + log.quantity, 0);
   const revenue = saleLogs.reduce((sum, log) => sum + log.price, 0);
   const costs = feedLogs.reduce((sum, log) => sum + (log.cost || 0), 0);
-  const latestLay = eggLogs.length > 0 ? eggLogs[0].count : 0;
 
   const chartData = Array.from({ length: 14 }).map((_, index) => {
     const day = subDays(new Date(), 13 - index);
@@ -494,15 +501,124 @@ function Dashboard({
 
   return (
     <div className="space-y-4">
-      <section className="grid grid-cols-2 gap-3">
-        <StatCard label="LATEST CLUTCH" value={latestLay} icon={<img src={singleEggIcon} alt="" className="w-8 h-8 object-contain" />} />
-        <StatCard label="TOTAL HAUL" value={totalEggs} icon={<img src={eggCupIcon} alt="" className="w-8 h-8 object-contain" />} />
-        <StatCard label="TOTAL SOLD" value={totalSold} icon={<img src={friedEggIcon} alt="" className="w-8 h-8 object-contain" />} />
-        <StatCard label="PROFIT-ISH" value={`£${(revenue - costs).toFixed(2)}`} icon={<img src={hatchingEggIcon} alt="" className="w-8 h-8 object-contain" />} accent="net" />
+      <section className="space-y-3">
+        <div className="flex justify-end">
+          <div className="flex rounded-2xl bg-violet-100 p-1 gap-1">
+            <button onClick={() => setFlockView('hen')} className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-colors ${flockView === 'hen' ? 'bg-white text-violet-700 shadow-sm' : 'text-violet-500'}`}>Hen</button>
+            <button onClick={() => setFlockView('coop')} className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-colors ${flockView === 'coop' ? 'bg-white text-violet-700 shadow-sm' : 'text-violet-500'}`}>Coop</button>
+          </div>
+        </div>
+        {flockView === 'hen' ? (() => {
+          const displayHens = hens.length > 0 ? hens : [
+            { id: 'f1', name: 'Hen Solo', locationId: '', status: 'Healthy' as const, _fake: true },
+            { id: 'f2', name: 'Meryl Cheep', locationId: '', status: 'Fluffy' as const, _fake: true },
+            { id: 'f3', name: 'Yolko Ono', locationId: '', status: 'Broody' as const, _fake: true },
+            { id: 'f4', name: 'Cluck Norris', locationId: '', status: 'Healthy' as const, _fake: true },
+          ] as (Hen & { _fake?: boolean })[];
+          const withTotals = displayHens.map((hen, i) => ({
+            hen,
+            total: hen._fake ? [12, 8, 15, 6, 10, 3, 9, 11][i % 8] : eggLogs.filter((l) => l.henId === hen.id).reduce((s, l) => s + l.count, 0),
+          }));
+          const maxHenEggs = Math.max(1, ...withTotals.map((h) => h.total));
+          const topHen = [...withTotals].sort((a, b) => b.total - a.total)[0];
+          const isOdd = displayHens.length % 2 !== 0;
+          return (
+            <div className="grid grid-cols-2 gap-3">
+              {withTotals.map(({ hen, total }) => {
+                const coopName = locations.find((l) => l.id === hen.locationId)?.name;
+                const pct = Math.round((total / maxHenEggs) * 100);
+                return (
+                  <Card key={hen.id} className="p-3 h-[130px] bg-[#FCFBFF] border-[#ECE7FF]">
+                    <div className="flex flex-col h-full gap-2">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-xl overflow-hidden bg-violet-100 shrink-0 flex items-center justify-center">
+                          {hen.photoUrl ? <img src={hen.photoUrl} className="w-full h-full object-cover" /> : <Bird size={14} className="text-violet-400" />}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-xs font-black text-violet-900 truncate">{hen.name}</p>
+                          {coopName && <p className="text-[10px] text-violet-900/40 truncate">{coopName}</p>}
+                        </div>
+                      </div>
+                      <div className="mt-auto space-y-1.5">
+                        <div className="flex items-end justify-between">
+                          <p className="text-2xl font-black leading-none text-violet-700">{total}</p>
+                          <img src={singleEggIcon} alt="" className="w-5 h-5 object-contain opacity-50" />
+                        </div>
+                        <div className="h-1.5 rounded-full bg-violet-100 overflow-hidden">
+                          <div className="h-full bg-violet-500 rounded-full" style={{ width: `${pct}%` }} />
+                        </div>
+                        <p className="text-[10px] text-violet-900/35 font-bold">{pct}% of top layer</p>
+                      </div>
+                    </div>
+                  </Card>
+                );
+              })}
+              {isOdd && (
+                <Card className="p-3 h-[130px] bg-amber-50 border-amber-200">
+                  <div className="flex flex-col h-full gap-2 items-center justify-center text-center">
+                    <Trophy size={22} className="text-amber-400" />
+                    <p className="text-[10px] uppercase tracking-[0.2em] font-black text-amber-700/60">Eggiest Hen</p>
+                    <p className="text-sm font-black text-amber-700 leading-tight">{topHen?.hen.name ?? '—'}</p>
+                    <p className="text-2xl font-black leading-none text-amber-600">{topHen?.total ?? 0}</p>
+                  </div>
+                </Card>
+              )}
+            </div>
+          );
+        })() : (() => {
+          const displayLocs = locations.length > 0 ? locations : [
+            { id: 'c1', name: 'Main Garden', type: 'Garden' as const, _fake: true },
+            { id: 'c2', name: 'Allotment Run', type: 'Allotment' as const, _fake: true },
+          ] as (Location & { _fake?: boolean })[];
+          const withEggs = displayLocs.map((loc, i) => ({
+            loc,
+            eggs: loc._fake ? [34, 21][i % 2] : eggLogs.filter((l) => l.locationId === loc.id).reduce((s, l) => s + l.count, 0),
+            henCount: loc._fake ? [4, 3][i % 2] : hens.filter((h) => h.locationId === loc.id).length,
+          }));
+          const topCoop = [...withEggs].sort((a, b) => b.eggs - a.eggs)[0];
+          const isOdd = displayLocs.length % 2 !== 0;
+          return (
+            <div className="grid grid-cols-2 gap-3">
+              {withEggs.map(({ loc, eggs, henCount }) => {
+                const pct = totalEggs ? Math.round((eggs / totalEggs) * 100) : (loc._fake ? [62, 38][displayLocs.indexOf(loc) % 2] : 0);
+                return (
+                  <Card key={loc.id} className="p-3 h-[130px] bg-[#FCFBFF] border-[#ECE7FF]">
+                    <div className="flex flex-col h-full gap-2">
+                      <div>
+                        <p className="text-[10px] uppercase tracking-[0.2em] font-black text-violet-900/35">{loc.type}</p>
+                        <p className="text-sm font-black text-violet-900 leading-tight">{loc.name}</p>
+                      </div>
+                      <div className="mt-auto space-y-1.5">
+                        <div className="flex items-end justify-between">
+                          <p className="text-2xl font-black leading-none text-violet-700">{eggs}</p>
+                          <p className="text-[10px] text-violet-900/40 font-bold">{henCount} hens</p>
+                        </div>
+                        <div className="h-1.5 rounded-full bg-violet-100 overflow-hidden">
+                          <div className="h-full bg-violet-500 rounded-full" style={{ width: `${pct}%` }} />
+                        </div>
+                        <p className="text-[10px] text-violet-900/35 font-bold">{pct}% of total</p>
+                      </div>
+                    </div>
+                  </Card>
+                );
+              })}
+              {isOdd && (
+                <Card className="p-3 h-[130px] bg-amber-50 border-amber-200">
+                  <div className="flex flex-col h-full gap-2 items-center justify-center text-center">
+                    <Trophy size={22} className="text-amber-400" />
+                    <p className="text-[10px] uppercase tracking-[0.2em] font-black text-amber-700/60">Egg Factory</p>
+                    <p className="text-sm font-black text-amber-700 leading-tight">{topCoop?.loc.name ?? '—'}</p>
+                    <p className="text-2xl font-black leading-none text-amber-600">{topCoop?.eggs ?? 0}</p>
+                  </div>
+                </Card>
+              )}
+            </div>
+          );
+        })()}
       </section>
 
       <Card>
-        <div className="flex justify-between items-end mb-4 gap-3">
+        <div className="flex justify-between items-end mb-2 gap-3">
           <div>
             <div className="flex items-center gap-2">
               <h3 className="text-lg font-serif italic">Rollin' Lay Count</h3>
@@ -511,7 +627,7 @@ function Dashboard({
           </div>
           <p className="text-2xl font-serif italic text-violet-600 font-bold">{chartData.reduce((sum, item) => sum + item.eggs, 0)}</p>
         </div>
-        <div className="h-36">
+        <div className="h-[110px]">
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={chartData}>
               <defs>
@@ -635,6 +751,37 @@ function CalendarCard({
   chickBatches: ChickBatch[];
 }) {
   const [range, setRange] = useState<CalendarRange>('month');
+  const touchStartX = useRef<number | null>(null);
+
+  const monthsWithData = useMemo(() => {
+    const months = new Set<string>();
+    eggLogs.forEach(l => months.add(l.date.slice(0, 7)));
+    saleLogs.forEach(l => months.add(l.date.slice(0, 7)));
+    feedLogs.forEach(l => months.add(l.date.slice(0, 7)));
+    medicationLogs.forEach(l => months.add(l.date.slice(0, 7)));
+    chickBatches.forEach(l => months.add(l.dateStarted.slice(0, 7)));
+    months.add(format(new Date(), 'yyyy-MM'));
+    return Array.from(months).sort();
+  }, [eggLogs, saleLogs, feedLogs, medicationLogs, chickBatches]);
+
+  const currentMonthKey = format(selectedDate, 'yyyy-MM');
+  const currentMonthIdx = monthsWithData.indexOf(currentMonthKey);
+
+  const goToPrevMonth = () => {
+    if (currentMonthIdx > 0) onSelectDate(parseISO(monthsWithData[currentMonthIdx - 1] + '-01'));
+  };
+  const goToNextMonth = () => {
+    if (currentMonthIdx < monthsWithData.length - 1) onSelectDate(parseISO(monthsWithData[currentMonthIdx + 1] + '-01'));
+  };
+
+  const handleTouchStart = (e: React.TouchEvent) => { touchStartX.current = e.touches[0].clientX; };
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (touchStartX.current === null) return;
+    const delta = e.changedTouches[0].clientX - touchStartX.current;
+    if (Math.abs(delta) > 50) delta < 0 ? goToNextMonth() : goToPrevMonth();
+    touchStartX.current = null;
+  };
+
   const days = useMemo(() => {
     if (range === 'month') {
       return eachDayOfInterval({ start: startOfMonth(selectedDate), end: endOfMonth(selectedDate) });
@@ -663,44 +810,63 @@ function CalendarCard({
 
   return (
     <Card>
-      <div className="flex items-center justify-between mb-4 gap-3">
-        <h2 className="text-2xl font-serif italic font-bold">{title}</h2>
-        {range !== 'month' && <p className="text-[10px] uppercase tracking-[0.2em] text-violet-900/35 font-bold">ending {format(selectedDate, 'd MMM')}</p>}
-      </div>
-      <div className="grid grid-cols-2 gap-2 mb-4">
-        {calendarFilters.map((item) => (
-          <button key={item.key} onClick={() => onChangeFilter(item.key)} className={`px-3 py-2.5 rounded-2xl text-xs font-bold border flex items-center justify-center gap-1.5 ${calendarFilter === item.key ? 'bg-violet-600 text-white border-violet-600' : 'bg-violet-50 text-violet-700 border-violet-100'}`}>
-            {item.icon}
-            {item.label}
-          </button>
-        ))}
-      </div>
-      <div className="grid grid-cols-7 gap-2 text-center mb-2">
-        {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((day) => <div key={day} className="text-[10px] uppercase tracking-widest text-violet-900/35 font-bold">{day}</div>)}
-      </div>
-      <div className="grid grid-cols-7 gap-2">
-        {range === 'month' && Array.from({ length: (new Date(days[0]).getDay() + 6) % 7 }).map((_, index) => <div key={`gap-${index}`} />)}
-        {days.map((day) => {
-          const key = format(day, 'yyyy-MM-dd');
-          const isSelected = isSameDay(day, selectedDate);
-          const value = eventValue(key);
-          const active = hasEvent(key);
-          return (
-            <button
-              key={day.toISOString()}
-              onClick={() => onSelectDate(day)}
-              className={`aspect-square rounded-2xl border flex flex-col items-center justify-center px-1 ${isSelected ? 'bg-violet-600 text-white border-violet-600' : active ? 'bg-white border-[#f6c85f]' : 'bg-white border-violet-100'}`}
-            >
-              <span className={`text-[11px] font-semibold ${isSelected ? 'text-white/80' : 'text-violet-900/55'}`}>{format(day, 'd')}</span>
-              {active && <span className={`text-sm font-black leading-none mt-1 ${isSelected ? 'text-white' : 'text-violet-700'}`}>{value}</span>}
+      <div
+        onTouchStart={range === 'month' ? handleTouchStart : undefined}
+        onTouchEnd={range === 'month' ? handleTouchEnd : undefined}
+      >
+        <div className="flex items-center justify-between mb-4 gap-3">
+          {range === 'month' ? (
+            <div className="flex items-center gap-1 min-w-0">
+              <button onClick={goToPrevMonth} disabled={currentMonthIdx <= 0} className="p-1 rounded-xl text-violet-400 disabled:opacity-20">
+                <ChevronLeft size={18} />
+              </button>
+              <h2 className="text-2xl font-serif italic font-bold">{title}</h2>
+              <button onClick={goToNextMonth} disabled={currentMonthIdx >= monthsWithData.length - 1} className="p-1 rounded-xl text-violet-400 disabled:opacity-20">
+                <ChevronRight size={18} />
+              </button>
+            </div>
+          ) : (
+            <>
+              <h2 className="text-2xl font-serif italic font-bold">{title}</h2>
+              <p className="text-[10px] uppercase tracking-[0.2em] text-violet-900/35 font-bold">ending {format(selectedDate, 'd MMM')}</p>
+            </>
+          )}
+        </div>
+        <div className="grid grid-cols-2 gap-2 mb-4">
+          {calendarFilters.map((item) => (
+            <button key={item.key} onClick={() => onChangeFilter(item.key)} className={`px-3 py-2.5 rounded-2xl text-xs font-bold border flex items-center justify-center gap-1.5 ${calendarFilter === item.key ? 'bg-violet-600 text-white border-violet-600' : 'bg-violet-50 text-violet-700 border-violet-100'}`}>
+              {item.icon}
+              {item.label}
             </button>
-          );
-        })}
-      </div>
-      <div className="grid grid-cols-3 gap-2 mt-4">
-        <button onClick={() => setRange('7')} className={`py-2.5 rounded-2xl text-xs font-bold border ${range === '7' ? 'bg-violet-600 text-white border-violet-600' : 'bg-violet-50 text-violet-700 border-violet-100'}`}>7 days</button>
-        <button onClick={() => setRange('14')} className={`py-2.5 rounded-2xl text-xs font-bold border ${range === '14' ? 'bg-violet-600 text-white border-violet-600' : 'bg-violet-50 text-violet-700 border-violet-100'}`}>14 days</button>
-        <button onClick={() => setRange('month')} className={`py-2.5 rounded-2xl text-xs font-bold border ${range === 'month' ? 'bg-violet-600 text-white border-violet-600' : 'bg-violet-50 text-violet-700 border-violet-100'}`}>1 month</button>
+          ))}
+        </div>
+        <div className="grid grid-cols-7 gap-2 text-center mb-2">
+          {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((day) => <div key={day} className="text-[10px] uppercase tracking-widest text-violet-900/35 font-bold">{day}</div>)}
+        </div>
+        <div className="grid grid-cols-7 gap-2">
+          {range === 'month' && Array.from({ length: (new Date(days[0]).getDay() + 6) % 7 }).map((_, index) => <div key={`gap-${index}`} />)}
+          {days.map((day) => {
+            const key = format(day, 'yyyy-MM-dd');
+            const isSelected = isSameDay(day, selectedDate);
+            const value = eventValue(key);
+            const active = hasEvent(key);
+            return (
+              <button
+                key={day.toISOString()}
+                onClick={() => onSelectDate(day)}
+                className={`aspect-square rounded-2xl border flex flex-col items-center justify-center px-1 ${isSelected ? 'bg-violet-600 text-white border-violet-600' : active ? 'bg-white border-[#f6c85f]' : 'bg-white border-violet-100'}`}
+              >
+                <span className={`text-[11px] font-semibold ${isSelected ? 'text-white/80' : 'text-violet-900/55'}`}>{format(day, 'd')}</span>
+                {active && <span className={`text-sm font-black leading-none mt-1 ${isSelected ? 'text-white' : 'text-violet-700'}`}>{value}</span>}
+              </button>
+            );
+          })}
+        </div>
+        <div className="grid grid-cols-3 gap-2 mt-4">
+          <button onClick={() => setRange('7')} className={`py-2.5 rounded-2xl text-xs font-bold border ${range === '7' ? 'bg-violet-600 text-white border-violet-600' : 'bg-violet-50 text-violet-700 border-violet-100'}`}>7 days</button>
+          <button onClick={() => setRange('14')} className={`py-2.5 rounded-2xl text-xs font-bold border ${range === '14' ? 'bg-violet-600 text-white border-violet-600' : 'bg-violet-50 text-violet-700 border-violet-100'}`}>14 days</button>
+          <button onClick={() => setRange('month')} className={`py-2.5 rounded-2xl text-xs font-bold border ${range === 'month' ? 'bg-violet-600 text-white border-violet-600' : 'bg-violet-50 text-violet-700 border-violet-100'}`}>1 month</button>
+        </div>
       </div>
     </Card>
   );
@@ -1238,12 +1404,14 @@ function ChickenWiki() {
 
 function LogSheet({
   locations,
+  hens,
   defaultMode,
   onClose,
   onSaveEgg,
   onSaveBatch,
 }: {
   locations: Location[];
+  hens: Hen[];
   defaultMode: LogMode;
   onClose: () => void;
   onSaveEgg: (item: EggLog, mode: LogMode) => Promise<void>;
@@ -1252,6 +1420,7 @@ function LogSheet({
   const [mode, setMode] = useState<LogMode>(defaultMode);
   const [count, setCount] = useState(defaultMode === 'breed' ? 6 : 3);
   const [locationId, setLocationId] = useState(findGardenLocation(locations)?.id || '');
+  const [henId, setHenId] = useState('');
   const [date, setDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [expectedHatchDate, setExpectedHatchDate] = useState(format(addDays(new Date(), 21), 'yyyy-MM-dd'));
   const [temperature, setTemperature] = useState<number | ''>('');
@@ -1286,6 +1455,7 @@ function LogSheet({
         <Field label="Date"><DateButton value={date} onChange={setDate} /></Field>
         {isBreed && <Field label="Anticipated hatch date"><DateButton value={expectedHatchDate} onChange={setExpectedHatchDate} /></Field>}
         <Field label="Coop"><Select value={locationId} onChange={(e) => setLocationId(e.target.value)}>{locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</Select></Field>
+        {hens.length > 0 && <Field label="Hen (optional)"><Select value={henId} onChange={(e) => setHenId(e.target.value)}><option value="">Whole flock</option>{hens.map((hen) => <option key={hen.id} value={hen.id}>{hen.name}</option>)}</Select></Field>}
         <Field label="Notes (optional)"><NoteButton note={notes} onClick={() => setNoteOpen(true)} /></Field>
         <Field label={`${isBreed ? 'Incubator' : 'Coop'} temperature (optional °C)`}>
           <div className="flex items-center gap-2">
@@ -1304,6 +1474,7 @@ function LogSheet({
                 dateStarted: started.toISOString(),
                 expectedHatchDate: new Date(expectedHatchDate).toISOString(),
                 locationId,
+                henId: henId || undefined,
                 status: 'Incubating',
                 notes: normalizeOptionalNote(notes),
                 temperature: temperature === '' ? undefined : temperature,
@@ -1313,7 +1484,7 @@ function LogSheet({
               });
               return;
             }
-            await onSaveEgg({ id: crypto.randomUUID(), count, locationId, date: new Date(date).toISOString(), mode, coopTemperature: temperature === '' ? undefined : temperature, notes: normalizeOptionalNote(notes) }, mode);
+            await onSaveEgg({ id: crypto.randomUUID(), count, locationId, henId: henId || undefined, date: new Date(date).toISOString(), mode, coopTemperature: temperature === '' ? undefined : temperature, notes: normalizeOptionalNote(notes) }, mode);
           }}
           className="w-full py-4 bg-violet-600 text-white rounded-3xl font-bold disabled:opacity-40"
         >
@@ -1368,7 +1539,11 @@ function EditableChickBatchTile({
   onDelete: () => Promise<void> | Promise<unknown>;
 }) {
   const [editing, setEditing] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [hatchedCount, setHatchedCount] = useState(batch.hatchedCount && batch.hatchedCount > 0 ? batch.hatchedCount : batch.count);
+  const [notes, setNotes] = useState(batch.notes || '');
+  const [photoUrl, setPhotoUrl] = useState(batch.photoUrl || '');
+  const [noteOpen, setNoteOpen] = useState(false);
   const totalDays = 21;
   const daysDone = Math.max(0, Math.min(totalDays, differenceInCalendarDays(new Date(), parseISO(batch.dateStarted))));
   const percent = Math.max(0, Math.min(100, (daysDone / totalDays) * 100));
@@ -1377,7 +1552,12 @@ function EditableChickBatchTile({
 
   useEffect(() => {
     setHatchedCount(batch.hatchedCount && batch.hatchedCount > 0 ? batch.hatchedCount : batch.count);
-  }, [batch.count, batch.hatchedCount]);
+    setNotes(batch.notes || '');
+    setPhotoUrl(batch.photoUrl || '');
+  }, [batch.count, batch.hatchedCount, batch.notes, batch.photoUrl]);
+
+  const isClosed = batch.status === 'Failed';
+  const hasPartialHatch = hatchedCount < batch.count;
 
   const saveEdit = async () => {
     const nextStatus = hatchedCount > 0 ? 'Hatched' : batch.status;
@@ -1387,6 +1567,21 @@ function EditableChickBatchTile({
       perishedCount: Math.max(0, batch.count - hatchedCount),
       status: nextStatus,
       hatchDate: hatchedCount > 0 ? (batch.hatchDate || new Date().toISOString()) : batch.hatchDate,
+      notes: normalizeOptionalNote(notes),
+      photoUrl: photoUrl || undefined,
+    });
+    setEditing(false);
+  };
+
+  const closeBatch = async () => {
+    await onSave({
+      ...batch,
+      hatchedCount,
+      perishedCount: batch.count - hatchedCount,
+      status: 'Failed',
+      hatchDate: batch.hatchDate || new Date().toISOString(),
+      notes: normalizeOptionalNote(notes),
+      photoUrl: photoUrl || undefined,
     });
     setEditing(false);
   };
@@ -1405,21 +1600,34 @@ function EditableChickBatchTile({
             </div>
           </div>
           <div className="flex gap-1 shrink-0">
-            <button onClick={() => setEditing((current) => !current)} className="p-2 rounded-xl bg-violet-50 text-violet-600"><Pencil size={14} /></button>
-            <button onClick={() => onDelete()} className="p-2 rounded-xl bg-rose-50 text-rose-500"><Trash2 size={14} /></button>
+            <button onClick={() => setEditing((current) => !current)} className="p-2 rounded-xl bg-violet-50"><img src={hatchingEggIcon} alt="Hatch" className="w-4 h-4 object-contain" /></button>
+            {confirmDelete ? (
+              <>
+                <button onClick={() => setConfirmDelete(false)} className="p-2 rounded-xl bg-violet-50 text-violet-600 text-xs font-bold">Keep</button>
+                <button onClick={() => onDelete()} className="p-2 rounded-xl bg-rose-500 text-white text-xs font-bold">Delete</button>
+              </>
+            ) : (
+              <button onClick={() => setConfirmDelete(true)} className="p-2 rounded-xl bg-rose-50 text-rose-500"><Trash2 size={14} /></button>
+            )}
           </div>
         </div>
-        <div className="flex items-center gap-3 text-violet-500">
+        <div className={`flex items-center gap-3 text-violet-500 ${isClosed ? 'opacity-40' : ''}`}>
           <img src={eggImage} alt="" className="w-8 h-8 object-contain" />
           <div className="flex-1">
-            <div className="h-2 rounded-full bg-violet-100 overflow-hidden"><div className="h-full bg-gradient-to-r from-amber-300 to-violet-500 rounded-full" style={{ width: `${percent}%` }} /></div>
+            <div className="h-2 rounded-full bg-violet-100 overflow-hidden">
+              <div className={`h-full rounded-full ${isClosed ? 'bg-violet-300' : 'bg-gradient-to-r from-amber-300 to-violet-500'}`} style={{ width: isClosed ? '100%' : `${percent}%` }} />
+            </div>
           </div>
           <div className="text-right min-w-[84px] ml-auto">
             <img src={hatchingEggIcon} alt="" className="w-7 h-7 object-contain ml-auto" />
-            <p className="text-xs text-violet-900/55">{daysLeft === 0 ? 'Hatch window' : `${daysLeft} day${daysLeft === 1 ? '' : 's'} left`}</p>
+            <p className="text-xs text-violet-900/55">{isClosed ? 'Closed' : daysLeft === 0 ? 'Hatch window' : `${daysLeft} day${daysLeft === 1 ? '' : 's'} left`}</p>
           </div>
         </div>
-        {(batch.hatchedCount || batch.perishedCount) ? <p className="text-xs text-violet-900/55">🐣 {batch.hatchedCount || 0} hatched • ☠️ {batch.perishedCount || 0} perished</p> : null}
+        {batch.status === 'Failed' && (batch.hatchedCount || batch.perishedCount) ? (
+          <p className="text-xs text-violet-900/55">🐣 {batch.hatchedCount || 0} hatched • ☠️ {batch.perishedCount || 0} perished</p>
+        ) : batch.hatchedCount ? (
+          <p className="text-xs text-violet-900/55">🐣 {batch.hatchedCount} hatched{batch.count - batch.hatchedCount > 0 ? ` • 🥚 ${batch.count - batch.hatchedCount} still brewing` : ''}</p>
+        ) : null}
         {batch.temperature !== undefined ? <p className="text-xs text-violet-900/55">Temperature: {batch.temperature}°C</p> : null}
         {batch.notes ? <p className="text-xs leading-relaxed text-violet-900/55">{batch.notes}</p> : null}
         {editing && (
@@ -1434,12 +1642,23 @@ function EditableChickBatchTile({
                 </div>
               </div>
             </Field>
-            <div className="grid grid-cols-2 gap-3">
-              <button onClick={() => setEditing(false)} className="py-3 rounded-2xl bg-white text-violet-700 font-bold border border-violet-100">Cancel</button>
-              <button onClick={saveEdit} className="py-3 rounded-2xl bg-violet-600 text-white font-bold">Save batch</button>
-            </div>
+            <Field label="Photo (optional)"><ImagePicker value={photoUrl} onChange={setPhotoUrl} /></Field>
+            <Field label="Notes (optional)"><NoteButton note={notes} onClick={() => setNoteOpen(true)} /></Field>
+            {hasPartialHatch && !isClosed ? (
+              <div className="grid grid-cols-3 gap-2">
+                <button onClick={() => setEditing(false)} className="py-3 rounded-2xl bg-white text-violet-700 font-bold border border-violet-100 text-sm">Cancel</button>
+                <button onClick={saveEdit} className="py-3 rounded-2xl bg-violet-600 text-white font-bold text-sm">Update</button>
+                <button onClick={closeBatch} className="py-3 rounded-2xl bg-rose-500 text-white font-bold text-sm">No cracks</button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-3">
+                <button onClick={() => setEditing(false)} className="py-3 rounded-2xl bg-white text-violet-700 font-bold border border-violet-100">Cancel</button>
+                <button onClick={saveEdit} className="py-3 rounded-2xl bg-violet-600 text-white font-bold">Save batch</button>
+              </div>
+            )}
           </div>
         )}
+        {noteOpen && <NoteModal value={notes} onClose={() => setNoteOpen(false)} onSave={setNotes} />}
       </div>
     </Card>
   );
@@ -1505,7 +1724,7 @@ function NoteModal({ value, onClose, onSave }: { value: string; onClose: () => v
   }, [value]);
 
   return (
-    <div className="fixed inset-0 z-[80] bg-violet-950/40 px-3 py-6 flex items-end sm:items-center justify-center" onClick={onClose}>
+    <div className="fixed inset-0 z-[80] bg-violet-950/40 px-3 py-6 flex items-center justify-center overflow-y-auto" onClick={onClose}>
       <div className="w-full max-w-md rounded-[28px] bg-white p-5 shadow-2xl space-y-4" onClick={(event) => event.stopPropagation()}>
         <div className="flex items-start justify-between gap-3">
           <div>
@@ -1536,14 +1755,14 @@ function NoteModal({ value, onClose, onSave }: { value: string; onClose: () => v
 
 function StatCard({ label, value, icon, accent }: { label: string; value: string | number; icon: ReactNode; accent?: string }) {
   return (
-    <Card className="p-4 min-h-[132px] bg-[#FCFBFF] border-[#ECE7FF]">
+    <Card className="p-3 min-h-[92px] bg-[#FCFBFF] border-[#ECE7FF]">
       <div className="flex h-full flex-col">
         <div className="flex items-start justify-between gap-3">
           <span className="text-[10px] uppercase tracking-[0.24em] font-black text-violet-900/35">{label}</span>
           {accent ? <span className="text-[10px] uppercase tracking-[0.24em] font-black text-violet-400">{accent}</span> : <span />}
         </div>
-        <div className="mt-4 text-[2rem] font-black leading-none text-violet-700">{value}</div>
-        <div className="mt-auto flex justify-end pt-5 opacity-95">{icon}</div>
+        <div className="mt-2 text-[2rem] font-black leading-none text-violet-700">{value}</div>
+        <div className="mt-auto flex justify-end pt-2 opacity-95">{icon}</div>
       </div>
     </Card>
   );
@@ -1628,13 +1847,13 @@ function ImagePicker({ value, onChange }: { value: string; onChange: (value: str
       <div className="rounded-2xl border-2 border-dashed border-violet-200 bg-violet-50 p-4 flex items-center justify-center min-h-28">
         {value ? <img src={value} alt="Preview" className="w-20 h-20 object-cover rounded-2xl" /> : <div className="text-center text-violet-400"><Camera size={22} className="mx-auto mb-2" /><span className="text-[10px] font-bold uppercase tracking-[0.2em]">{uploading ? 'Uploading…' : 'No photo yet'}</span></div>}
       </div>
-      <div className="grid grid-cols-2 gap-2">
-        <button type="button" disabled={uploading} onClick={() => libraryRef.current?.click()} className="py-3 rounded-2xl bg-white border border-violet-100 text-violet-700 font-bold text-sm disabled:opacity-60">Choose from library</button>
-        <button type="button" disabled={uploading} onClick={() => cameraRef.current?.click()} className="py-3 rounded-2xl bg-violet-600 text-white font-bold text-sm disabled:opacity-60">{uploading ? 'Uploading…' : 'Take photo'}</button>
+      <div className={`grid gap-2 ${value ? 'grid-cols-[1fr_1fr_auto]' : 'grid-cols-2'}`}>
+        <button type="button" disabled={uploading} onClick={() => libraryRef.current?.click()} className="py-3 rounded-2xl bg-white border border-violet-100 text-violet-700 font-bold text-sm disabled:opacity-60">Upload photo</button>
+        <button type="button" disabled={uploading} onClick={() => cameraRef.current?.click()} className="py-3 rounded-2xl bg-violet-600 text-white font-bold text-sm disabled:opacity-60">{uploading ? 'Uploading…' : 'Camera'}</button>
+        {value && <button type="button" onClick={() => onChange('')} className="aspect-square py-3 px-3 rounded-2xl bg-rose-50 text-rose-500 flex items-center justify-center"><Trash2 size={16} /></button>}
       </div>
       <input ref={libraryRef} type="file" accept="image/*" className="hidden" onChange={(event) => readFile(event.target.files?.[0])} />
       <input ref={cameraRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={(event) => readFile(event.target.files?.[0])} />
-      {value && <button type="button" onClick={() => onChange('')} className="p-2 text-rose-500 bg-rose-50 rounded-xl"><Trash2 size={18} /></button>}
     </div>
   );
 }
@@ -1646,12 +1865,22 @@ function Select(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
 function DateButton({ value, onChange }: { value: string; onChange: (value: string) => void }) {
   const ref = useRef<HTMLInputElement | null>(null);
   return (
-    <div>
-      <button type="button" onClick={() => ref.current?.showPicker ? ref.current.showPicker() : ref.current?.click()} className="w-full p-4 bg-violet-50 rounded-2xl border-2 border-transparent focus:border-violet-300 focus:outline-none flex items-center justify-between text-left">
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => ref.current?.showPicker?.()}
+        className="w-full p-4 bg-violet-50 rounded-2xl border-2 border-transparent focus:border-violet-300 focus:outline-none flex items-center justify-between text-left"
+      >
         <span className="font-medium">{format(new Date(value), 'EEE d MMM yyyy')}</span>
         <CalendarDays size={18} className="text-violet-500" />
       </button>
-      <input ref={ref} type="date" value={value} onChange={(e) => onChange(e.target.value)} className="sr-only" />
+      <input
+        ref={ref}
+        type="date"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer [@media(hover:hover)]:pointer-events-none"
+      />
     </div>
   );
 }
