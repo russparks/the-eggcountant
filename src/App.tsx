@@ -164,17 +164,24 @@ export default function App() {
     }
 
     let cancelled = false;
+    const safeList = async <K extends import('./api').CollectionName>(collection: K): Promise<import('./api').AppRecordMap[K][]> => {
+      try {
+        return await dataApi.list(collection);
+      } catch {
+        return [];
+      }
+    };
     const load = async () => {
       setLoadingData(true);
       try {
         const [locations, eggLogs, hens, feedLogs, medicationLogs, saleLogs, chickBatches] = await Promise.all([
-          dataApi.list('locations'),
-          dataApi.list('eggLogs'),
-          dataApi.list('hens'),
-          dataApi.list('feedLogs'),
-          dataApi.list('medicationLogs'),
-          dataApi.list('saleLogs'),
-          dataApi.list('chickBatches'),
+          safeList('locations'),
+          safeList('eggLogs'),
+          safeList('hens'),
+          safeList('feedLogs'),
+          safeList('medicationLogs'),
+          safeList('saleLogs'),
+          safeList('chickBatches'),
         ]);
 
         if (!cancelled) {

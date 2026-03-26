@@ -779,7 +779,7 @@ function db_upsert_collection_item(string $userId, string $collection, array $it
 
 function db_delete_collection_item(string $userId, string $collection, string $id): void {
     if ($collection === 'medicationLogs' && !can_store_medication_rows()) {
-        throw new RuntimeException('feed_logs table cannot distinguish medication rows');
+        return;
     }
 
     $table = COLLECTION_TABLES[$collection] ?? null;
@@ -1129,7 +1129,7 @@ function can_store_medication_rows(): bool {
 
 function fetch_feed_logs(string $userId, string $kind): array {
     if ($kind === 'medication' && !can_store_medication_rows()) {
-        throw new RuntimeException('feed_logs table cannot distinguish medication rows');
+        return [];
     }
 
     $extraWhere = feed_log_kind_where_clause('feed_logs', $kind);
