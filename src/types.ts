@@ -86,6 +86,7 @@ export type ChickBatch = {
   status: 'Incubating' | 'Hatched' | 'Failed';
   locationId: string;
   notes?: string;
+  temperature?: number;
   hatchedCount?: number;
   perishedCount?: number;
   chicks?: Chick[];

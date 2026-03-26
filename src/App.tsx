@@ -16,6 +16,7 @@ import {
   BookOpen,
   CalendarDays,
   Camera,
+  NotebookPen,
   ChevronDown,
   Egg,
   House,
@@ -119,6 +120,15 @@ const getSaleLabel = (itemType?: SaleItemType, quantity?: number) => {
   if (type === 'chicks') return count === 1 ? 'chick sold' : 'chicks sold';
   if (type === 'chickens') return count === 1 ? 'chicken sold' : 'chickens sold';
   return count === 1 ? 'egg sold' : 'eggs sold';
+};
+
+const NOTE_WORD_LIMIT = 100;
+const countWords = (value: string) => value.trim() ? value.trim().split(/\s+/).length : 0;
+const normalizeOptionalNote = (value: string) => value.trim() || undefined;
+const truncateToWordLimit = (value: string, limit = NOTE_WORD_LIMIT) => {
+  const words = value.trim().split(/\s+/).filter(Boolean);
+  if (words.length <= limit) return value;
+  return words.slice(0, limit).join(' ');
 };
 
 export default function App() {
@@ -786,6 +796,8 @@ function BirdSettings({
   const [name, setName] = useState('');
   const [locationId, setLocationId] = useState(findGardenLocation(locations)?.id || '');
   const [photoUrl, setPhotoUrl] = useState('');
+  const [notes, setNotes] = useState('');
+  const [noteOpen, setNoteOpen] = useState(false);
   const [status, setStatus] = useState<HenAppearance>('Healthy');
   const [savedFlash, setSavedFlash] = useState(false);
   const demoMode = hens.length === 0;
@@ -805,6 +817,7 @@ function BirdSettings({
     setEditingHenId(null);
     setName('');
     setPhotoUrl('');
+    setNotes('');
     setStatus('Healthy');
     setLocationId(findGardenLocation(locations)?.id || locations[0]?.id || '');
   };
@@ -831,9 +844,10 @@ function BirdSettings({
               <Field label="Appearance"><Select value={status} onChange={(e) => setStatus(e.target.value as HenAppearance)}>{appearanceOptions.map((option) => <option key={option}>{option}</option>)}</Select></Field>
               <Field label="Coop"><Select value={locationId} onChange={(e) => setLocationId(e.target.value)}>{locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</Select></Field>
               <Field label="Photo (optional)"><ImagePicker value={photoUrl} onChange={setPhotoUrl} /></Field>
+              <Field label="Notes (optional)"><NoteButton note={notes} onClick={() => setNoteOpen(true)} /></Field>
               <button onClick={async () => {
                 if (!name.trim() || !locationId) return;
-                await onSaveHen({ id: editingHenId || crypto.randomUUID(), name: name.trim(), locationId, status, photoUrl: photoUrl || undefined });
+                await onSaveHen({ id: editingHenId || crypto.randomUUID(), name: name.trim(), locationId, status, photoUrl: photoUrl || undefined, notes: normalizeOptionalNote(notes) });
                 resetHenForm();
                 setSavedFlash(true);
               }} className="w-full py-4 bg-violet-600 text-white rounded-2xl font-bold">{editingHenId ? 'Save bird' : "Let's Cluckin' Go!"}</button>
@@ -864,6 +878,7 @@ function BirdSettings({
                     setName(hen.name);
                     setLocationId(hen.locationId);
                     setPhotoUrl(hen.photoUrl || '');
+                    setNotes(hen.notes || '');
                     setStatus(hen.status);
                   }} className="p-1.5 bg-white/80 text-violet-600 rounded-lg"><Pencil size={12} /></button>
                   <button onClick={() => onDeleteHen(hen.id)} className="p-1.5 bg-white/80 text-rose-500 rounded-lg"><Trash2 size={12} /></button>
@@ -875,10 +890,12 @@ function BirdSettings({
               <p className="font-bold text-sm">{hen.name}</p>
               <p className="text-[10px] uppercase tracking-widest text-violet-900/40 font-bold">{demoMode ? DEMO_COOPS[hen.locationId] : locations.find((location) => location.id === hen.locationId)?.name}</p>
               <div className="mt-2 inline-block text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-full bg-violet-50 text-violet-700">{hen.status}</div>
+              {hen.notes ? <p className="mt-2 text-xs leading-relaxed text-violet-900/55">{hen.notes}</p> : null}
             </div>
           </Card>
         ))}
       </div>
+      {noteOpen ? <NoteModal value={notes} onClose={() => setNoteOpen(false)} onSave={setNotes} /> : null}
     </div>
   );
 }
@@ -981,11 +998,15 @@ function FeedAndMedTracker({
   const [feedType, setFeedType] = useState('');
   const [feedDate, setFeedDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [feedLocationId, setFeedLocationId] = useState(findGardenLocation(locations)?.id || '');
+  const [feedNotes, setFeedNotes] = useState('');
+  const [feedNoteOpen, setFeedNoteOpen] = useState(false);
   const [editingMedId, setEditingMedId] = useState<string | null>(null);
   const [medicationName, setMedicationName] = useState('');
   const [dosage, setDosage] = useState('');
   const [medHenId, setMedHenId] = useState('');
   const [medLocationId, setMedLocationId] = useState(findGardenLocation(locations)?.id || '');
+  const [medNotes, setMedNotes] = useState('');
+  const [medNoteOpen, setMedNoteOpen] = useState(false);
   const [medDate, setMedDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [savedFlash, setSavedFlash] = useState<null | 'feed' | 'med'>(null);
   const formRef = useRef<HTMLDivElement | null>(null);
@@ -998,6 +1019,7 @@ function FeedAndMedTracker({
     setWeight('');
     setFeedType('');
     setFeedDate(format(new Date(), 'yyyy-MM-dd'));
+    setFeedNotes('');
   };
 
   const resetMed = () => {
@@ -1006,6 +1028,7 @@ function FeedAndMedTracker({
     setDosage('');
     setMedHenId('');
     setMedDate(format(new Date(), 'yyyy-MM-dd'));
+    setMedNotes('');
   };
 
   useEffect(() => {
@@ -1041,6 +1064,7 @@ function FeedAndMedTracker({
                 <Field label="Type (optional)"><input value={feedType} onChange={(e) => setFeedType(e.target.value)} className={inputClass} placeholder="Layers pellets" /></Field>
                 <Field label="Date"><DateButton value={feedDate} onChange={setFeedDate} /></Field>
                 <Field label="Coop"><Select value={feedLocationId} onChange={(e) => setFeedLocationId(e.target.value)}>{locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</Select></Field>
+                <Field label="Notes (optional)"><NoteButton note={feedNotes} onClick={() => setFeedNoteOpen(true)} /></Field>
                 <button onClick={async () => {
                   if (!feedLocationId) return;
                   await onSaveFeed({
@@ -1051,6 +1075,7 @@ function FeedAndMedTracker({
                     weight: weight ? Number(weight) : undefined,
                     feedType: feedType || undefined,
                     locationId: feedLocationId,
+                    notes: normalizeOptionalNote(feedNotes),
                   });
                   resetFeed();
                   setSavedFlash('feed');
@@ -1058,7 +1083,7 @@ function FeedAndMedTracker({
               </div>
             </Card>
           </div>
-          <div className="space-y-3">{recentFeedLogs.map((log) => <Card key={log.id}><div className="flex justify-between gap-3"><div><p className="font-bold">{log.amount} {log.amount === 1 ? 'pack / bag' : 'packs / bags'}{log.feedType ? ` · ${log.feedType}` : ''}</p><p className="text-xs text-violet-900/45">{format(parseISO(log.date), 'd MMM yyyy')} • {locations.find((location) => location.id === log.locationId)?.name}</p><p className="text-xs text-violet-900/45">{[log.weight ? `${log.weight}kg` : null, log.cost ? `£${log.cost.toFixed(2)}` : null].filter(Boolean).join(' • ') || 'Optional extras not logged'}</p></div><div className="flex gap-1"><button onClick={() => { setEditingFeedId(log.id); setAmount(log.amount); setCost(log.cost ? String(log.cost) : ''); setWeight(log.weight ? String(log.weight) : ''); setFeedType(log.feedType || ''); setFeedDate(format(parseISO(log.date), 'yyyy-MM-dd')); setFeedLocationId(log.locationId); formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }} className="p-2 rounded-xl bg-violet-50 text-violet-600"><Pencil size={14} /></button><button onClick={() => onDeleteFeed(log.id)} className="p-2 rounded-xl bg-rose-50 text-rose-500"><Trash2 size={14} /></button></div></div></Card>)}</div>
+          <div className="space-y-3">{recentFeedLogs.map((log) => <Card key={log.id}><div className="flex justify-between gap-3"><div><p className="font-bold">{log.amount} {log.amount === 1 ? 'pack / bag' : 'packs / bags'}{log.feedType ? ` · ${log.feedType}` : ''}</p><p className="text-xs text-violet-900/45">{format(parseISO(log.date), 'd MMM yyyy')} • {locations.find((location) => location.id === log.locationId)?.name}</p><p className="text-xs text-violet-900/45">{[log.weight ? `${log.weight}kg` : null, log.cost ? `£${log.cost.toFixed(2)}` : null].filter(Boolean).join(' • ') || 'Optional extras not logged'}</p>{log.notes ? <p className="mt-2 text-xs leading-relaxed text-violet-900/55">{log.notes}</p> : null}</div><div className="flex gap-1"><button onClick={() => { setEditingFeedId(log.id); setAmount(log.amount); setCost(log.cost ? String(log.cost) : ''); setWeight(log.weight ? String(log.weight) : ''); setFeedType(log.feedType || ''); setFeedDate(format(parseISO(log.date), 'yyyy-MM-dd')); setFeedLocationId(log.locationId); setFeedNotes(log.notes || ''); formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }} className="p-2 rounded-xl bg-violet-50 text-violet-600"><Pencil size={14} /></button><button onClick={() => onDeleteFeed(log.id)} className="p-2 rounded-xl bg-rose-50 text-rose-500"><Trash2 size={14} /></button></div></div></Card>)}</div>
         </>
       ) : (
         <>
@@ -1072,17 +1097,20 @@ function FeedAndMedTracker({
                 <Field label="Coop"><Select value={medLocationId} onChange={(e) => setMedLocationId(e.target.value)}>{locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</Select></Field>
               </div>
               <Field label="Date"><DateButton value={medDate} onChange={setMedDate} /></Field>
+              <Field label="Notes (optional)"><NoteButton note={medNotes} onClick={() => setMedNoteOpen(true)} /></Field>
               <button onClick={async () => {
                 if (!medicationName || !dosage || !medLocationId) return;
-                await onSaveMedication({ id: editingMedId || crypto.randomUUID(), date: new Date(medDate).toISOString(), medicationName, dosage, locationId: medLocationId, henId: medHenId || undefined });
+                await onSaveMedication({ id: editingMedId || crypto.randomUUID(), date: new Date(medDate).toISOString(), medicationName, dosage, locationId: medLocationId, henId: medHenId || undefined, notes: normalizeOptionalNote(medNotes) });
                 resetMed();
                 setSavedFlash('med');
               }} className="w-full py-4 bg-violet-600 text-white rounded-2xl font-bold">Log medication</button>
             </div>
           </Card>
-          <div className="space-y-3">{medicationLogs.map((log) => <Card key={log.id}><div className="flex justify-between gap-3"><div><p className="font-bold">{log.medicationName}</p><p className="text-xs text-violet-900/45">{log.dosage} • {format(parseISO(log.date), 'd MMM yyyy')}</p><p className="text-xs text-violet-900/45">{log.henId ? hens.find((hen) => hen.id === log.henId)?.name : 'Whole flock'} • {locations.find((location) => location.id === log.locationId)?.name}</p></div><div className="flex gap-1"><button onClick={() => { setEditingMedId(log.id); setMedicationName(log.medicationName); setDosage(log.dosage); setMedHenId(log.henId || ''); setMedLocationId(log.locationId); setMedDate(format(parseISO(log.date), 'yyyy-MM-dd')); }} className="p-2 rounded-xl bg-violet-50 text-violet-600"><Pencil size={14} /></button><button onClick={() => onDeleteMedication(log.id)} className="p-2 rounded-xl bg-rose-50 text-rose-500"><Trash2 size={14} /></button></div></div></Card>)}</div>
+          <div className="space-y-3">{medicationLogs.map((log) => <Card key={log.id}><div className="flex justify-between gap-3"><div><p className="font-bold">{log.medicationName}</p><p className="text-xs text-violet-900/45">{log.dosage} • {format(parseISO(log.date), 'd MMM yyyy')}</p><p className="text-xs text-violet-900/45">{log.henId ? hens.find((hen) => hen.id === log.henId)?.name : 'Whole flock'} • {locations.find((location) => location.id === log.locationId)?.name}</p>{log.notes ? <p className="mt-2 text-xs leading-relaxed text-violet-900/55">{log.notes}</p> : null}</div><div className="flex gap-1"><button onClick={() => { setEditingMedId(log.id); setMedicationName(log.medicationName); setDosage(log.dosage); setMedHenId(log.henId || ''); setMedLocationId(log.locationId); setMedDate(format(parseISO(log.date), 'yyyy-MM-dd')); setMedNotes(log.notes || ''); }} className="p-2 rounded-xl bg-violet-50 text-violet-600"><Pencil size={14} /></button><button onClick={() => onDeleteMedication(log.id)} className="p-2 rounded-xl bg-rose-50 text-rose-500"><Trash2 size={14} /></button></div></div></Card>)}</div>
         </>
       )}
+      {feedNoteOpen ? <NoteModal value={feedNotes} onClose={() => setFeedNoteOpen(false)} onSave={setFeedNotes} /> : null}
+      {medNoteOpen ? <NoteModal value={medNotes} onClose={() => setMedNoteOpen(false)} onSave={setMedNotes} /> : null}
     </div>
   );
 }
@@ -1093,6 +1121,8 @@ function SalesTracker({ saleLogs, onSave, onDelete }: { saleLogs: SaleLog[]; onS
   const [price, setPrice] = useState('');
   const [date, setDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [itemType, setItemType] = useState<SaleItemType>('eggs');
+  const [notes, setNotes] = useState('');
+  const [noteOpen, setNoteOpen] = useState(false);
   const [savedSplash, setSavedSplash] = useState(false);
   const recentSales = useMemo(() => saleLogs.filter((log) => withinLastDays(log.date, 14)), [saleLogs]);
 
@@ -1108,6 +1138,7 @@ function SalesTracker({ saleLogs, onSave, onDelete }: { saleLogs: SaleLog[]; onS
     setPrice('');
     setDate(format(new Date(), 'yyyy-MM-dd'));
     setItemType('eggs');
+    setNotes('');
   };
 
   return (
@@ -1123,15 +1154,17 @@ function SalesTracker({ saleLogs, onSave, onDelete }: { saleLogs: SaleLog[]; onS
           <Field label="Units sold"><Stepper value={quantity} onChange={setQuantity} min={1} max={120} /></Field>
           <Field label="Total price (£)"><input type="number" value={price} onChange={(e) => setPrice(e.target.value)} className={inputClass} /></Field>
           <Field label="Date"><DateButton value={date} onChange={setDate} /></Field>
+          <Field label="Notes (optional)"><NoteButton note={notes} onClick={() => setNoteOpen(true)} /></Field>
           <button onClick={async () => {
             if (!price) return;
-            await onSave({ id: editingId || crypto.randomUUID(), quantity, price: Number(price), date: new Date(date).toISOString(), itemType });
+            await onSave({ id: editingId || crypto.randomUUID(), quantity, price: Number(price), date: new Date(date).toISOString(), itemType, notes: normalizeOptionalNote(notes) });
             reset();
             setSavedSplash(true);
           }} className="w-full py-4 bg-violet-600 text-white rounded-2xl font-bold">{editingId ? 'Save sale' : 'Cluck n Load'}</button>
         </div>
       </Card>
-      <div className="space-y-3">{recentSales.map((log) => <Card key={log.id}><div className="flex justify-between gap-3"><div><p className="font-bold">{log.quantity} {getSaleLabel(log.itemType, log.quantity)}</p><p className="text-xs text-violet-900/45">{format(parseISO(log.date), 'd MMM yyyy')}</p></div><div className="flex items-start gap-2"><div className="font-serif italic font-bold text-violet-600">£{log.price.toFixed(2)}</div><button onClick={() => { setEditingId(log.id); setQuantity(log.quantity); setPrice(String(log.price)); setDate(format(parseISO(log.date), 'yyyy-MM-dd')); setItemType(log.itemType || 'eggs'); }} className="p-2 rounded-xl bg-violet-50 text-violet-600"><Pencil size={14} /></button><button onClick={() => onDelete(log.id)} className="p-2 rounded-xl bg-rose-50 text-rose-500"><Trash2 size={14} /></button></div></div></Card>)}</div>
+      <div className="space-y-3">{recentSales.map((log) => <Card key={log.id}><div className="flex justify-between gap-3"><div><p className="font-bold">{log.quantity} {getSaleLabel(log.itemType, log.quantity)}</p><p className="text-xs text-violet-900/45">{format(parseISO(log.date), 'd MMM yyyy')}</p>{log.notes ? <p className="mt-2 text-xs leading-relaxed text-violet-900/55">{log.notes}</p> : null}</div><div className="flex items-start gap-2"><div className="font-serif italic font-bold text-violet-600">£{log.price.toFixed(2)}</div><button onClick={() => { setEditingId(log.id); setQuantity(log.quantity); setPrice(String(log.price)); setDate(format(parseISO(log.date), 'yyyy-MM-dd')); setItemType(log.itemType || 'eggs'); setNotes(log.notes || ''); }} className="p-2 rounded-xl bg-violet-50 text-violet-600"><Pencil size={14} /></button><button onClick={() => onDelete(log.id)} className="p-2 rounded-xl bg-rose-50 text-rose-500"><Trash2 size={14} /></button></div></div></Card>)}</div>
+      {noteOpen ? <NoteModal value={notes} onClose={() => setNoteOpen(false)} onSave={setNotes} /> : null}
     </div>
   );
 }
@@ -1192,6 +1225,8 @@ function LogSheet({
   const [date, setDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [expectedHatchDate, setExpectedHatchDate] = useState(format(addDays(new Date(), 21), 'yyyy-MM-dd'));
   const [temperature, setTemperature] = useState<number | ''>('');
+  const [notes, setNotes] = useState('');
+  const [noteOpen, setNoteOpen] = useState(false);
 
   useEffect(() => {
     if (!locationId && locations.length) setLocationId(findGardenLocation(locations)?.id || locations[0].id);
@@ -1221,14 +1256,13 @@ function LogSheet({
         <Field label="Date"><DateButton value={date} onChange={setDate} /></Field>
         {isBreed && <Field label="Anticipated hatch date"><DateButton value={expectedHatchDate} onChange={setExpectedHatchDate} /></Field>}
         <Field label="Coop"><Select value={locationId} onChange={(e) => setLocationId(e.target.value)}>{locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</Select></Field>
-        {isBreed && (
-          <Field label="Coop temperature (optional °C)">
-            <div className="flex items-center gap-2">
-              {[18, 20, 22, 24].map((preset) => <button key={preset} type="button" onClick={() => setTemperature(preset)} className={`px-3 py-2 rounded-xl text-sm font-bold ${temperature === preset ? 'bg-violet-600 text-white' : 'bg-violet-50 text-violet-700'}`}>{preset}°</button>)}
-              <input type="number" value={temperature} onChange={(e) => setTemperature(e.target.value ? Number(e.target.value) : '')} className={inputClass} placeholder="Custom" />
-            </div>
-          </Field>
-        )}
+        <Field label="Notes (optional)"><NoteButton note={notes} onClick={() => setNoteOpen(true)} /></Field>
+        <Field label={`${isBreed ? 'Incubator' : 'Coop'} temperature (optional °C)`}>
+          <div className="flex items-center gap-2">
+            {[18, 20, 22, 24].map((preset) => <button key={preset} type="button" onClick={() => setTemperature(preset)} className={`px-3 py-2 rounded-xl text-sm font-bold ${temperature === preset ? 'bg-violet-600 text-white' : 'bg-violet-50 text-violet-700'}`}>{preset}°</button>)}
+            <input type="number" value={temperature} onChange={(e) => setTemperature(e.target.value ? Number(e.target.value) : '')} className={inputClass} placeholder="Custom" />
+          </div>
+        </Field>
         <button
           disabled={!locationId || count < 1}
           onClick={async () => {
@@ -1241,18 +1275,21 @@ function LogSheet({
                 expectedHatchDate: new Date(expectedHatchDate).toISOString(),
                 locationId,
                 status: 'Incubating',
+                notes: normalizeOptionalNote(notes),
+                temperature: temperature === '' ? undefined : temperature,
                 chicks: [],
                 hatchedCount: 0,
                 perishedCount: 0,
               });
               return;
             }
-            await onSaveEgg({ id: crypto.randomUUID(), count, locationId, date: new Date(date).toISOString(), mode, coopTemperature: undefined }, mode);
+            await onSaveEgg({ id: crypto.randomUUID(), count, locationId, date: new Date(date).toISOString(), mode, coopTemperature: temperature === '' ? undefined : temperature, notes: normalizeOptionalNote(notes) }, mode);
           }}
           className="w-full py-4 bg-violet-600 text-white rounded-3xl font-bold disabled:opacity-40"
         >
           {isBreed ? 'Start breeding batch' : 'Save collection'}
         </button>
+        {noteOpen ? <NoteModal value={notes} onClose={() => setNoteOpen(false)} onSave={setNotes} /> : null}
       </div>
     </div>
   );
@@ -1353,6 +1390,8 @@ function EditableChickBatchTile({
           </div>
         </div>
         {(batch.hatchedCount || batch.perishedCount) ? <p className="text-xs text-violet-900/55">{batch.hatchedCount || 0} hatched • {batch.perishedCount || 0} perished</p> : null}
+        {batch.temperature !== undefined ? <p className="text-xs text-violet-900/55">Temperature: {batch.temperature}°C</p> : null}
+        {batch.notes ? <p className="text-xs leading-relaxed text-violet-900/55">{batch.notes}</p> : null}
         {editing && (
           <div className="rounded-3xl bg-violet-50 p-4 space-y-4 border border-violet-100">
             <Field label="Chicks hatched">
@@ -1407,6 +1446,62 @@ function Card({ children, className = '' }: React.PropsWithChildren<{ className?
 
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return <label className="block space-y-2"><span className="text-xs font-bold uppercase tracking-widest text-violet-900/40 px-1">{label}</span>{children}</label>;
+}
+
+function NoteButton({ note, onClick }: { note?: string; onClick: () => void }) {
+  return (
+    <button type="button" onClick={onClick} className={`w-full rounded-2xl border px-4 py-3 text-left transition-colors ${note ? 'border-violet-200 bg-violet-50 text-violet-900' : 'border-dashed border-violet-200 bg-white text-violet-600'}`}>
+      <div className="flex items-start gap-3">
+        <span className={`mt-0.5 rounded-xl p-2 ${note ? 'bg-white text-violet-600' : 'bg-violet-50 text-violet-500'}`}><NotebookPen size={16} /></span>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-sm font-bold">Add note</span>
+            <span className="text-[10px] font-bold uppercase tracking-widest text-violet-900/35">{countWords(note || '')}/{NOTE_WORD_LIMIT} words</span>
+          </div>
+          <p className="mt-1 text-sm leading-relaxed text-violet-900/55 line-clamp-2">{note ? note : 'Optional extra detail, tucked into a tidy little pop-up.'}</p>
+        </div>
+      </div>
+    </button>
+  );
+}
+
+function NoteModal({ value, onClose, onSave }: { value: string; onClose: () => void; onSave: (value: string) => void }) {
+  const [draft, setDraft] = useState(value);
+  const words = countWords(draft);
+  const overLimit = words > NOTE_WORD_LIMIT;
+
+  useEffect(() => {
+    setDraft(value);
+  }, [value]);
+
+  return (
+    <div className="fixed inset-0 z-[80] bg-violet-950/40 px-3 py-6 flex items-end sm:items-center justify-center" onClick={onClose}>
+      <div className="w-full max-w-md rounded-[28px] bg-white p-5 shadow-2xl space-y-4" onClick={(event) => event.stopPropagation()}>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h3 className="text-2xl font-serif italic font-bold">Add note</h3>
+            <p className="text-sm text-violet-900/55">Keep it short and useful. Max {NOTE_WORD_LIMIT} words.</p>
+          </div>
+          <button type="button" onClick={onClose} className="rounded-xl bg-violet-50 p-2 text-violet-600"><X size={18} /></button>
+        </div>
+        <textarea
+          value={draft}
+          onChange={(event) => setDraft(truncateToWordLimit(event.target.value))}
+          rows={5}
+          className={`${inputClass} min-h-[140px] resize-none`}
+          placeholder="Anything worth remembering?"
+        />
+        <div className="flex items-center justify-between gap-3 text-xs">
+          <span className={`${overLimit ? 'text-rose-500' : 'text-violet-900/45'}`}>{words}/{NOTE_WORD_LIMIT} words</span>
+          <span className="text-violet-900/35">Mobile-friendly little note nook.</span>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <button type="button" onClick={onClose} className="rounded-2xl bg-violet-50 py-3 font-bold text-violet-700">Cancel</button>
+          <button type="button" disabled={overLimit} onClick={() => { onSave(draft); onClose(); }} className="rounded-2xl bg-violet-600 py-3 font-bold text-white disabled:opacity-40">Save note</button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function StatCard({ label, value, icon, accent }: { label: string; value: string | number; icon: ReactNode; accent?: string }) {

@@ -978,7 +978,7 @@ function map_coop_row_to_record(array $row): array {
         'id' => app_record_id_from_row('coops', $row),
         'name' => (string) column_value($row, ['name', 'coop_name', 'title'], $payload['name'] ?? ''),
         'type' => (string) column_value($row, ['type', 'coop_type'], $payload['type'] ?? 'Other'),
-        'photoUrl' => column_value($row, ['photo_url', 'photoUrl', 'image_url', 'imageUrl'], $payload['photoUrl'] ?? null),
+        'photoUrl' => column_value($row, ['photo_url', 'photoUrl', 'photo_path', 'photoPath', 'image_url', 'imageUrl'], $payload['photoUrl'] ?? ($payload['photoPath'] ?? null)),
     ];
 }
 
@@ -995,6 +995,8 @@ function upsert_coop(string $userId, array $item): void {
         'coop_type' => $item['type'] ?? null,
         'photo_url' => $item['photoUrl'] ?? null,
         'photoUrl' => $item['photoUrl'] ?? null,
+        'photo_path' => $item['photoUrl'] ?? null,
+        'photoPath' => $item['photoUrl'] ?? null,
         'image_url' => $item['photoUrl'] ?? null,
         'imageUrl' => $item['photoUrl'] ?? null,
         payload_column('coops') ?: '__skip_payload' => json_encode($item, JSON_UNESCAPED_SLASHES),
@@ -1013,7 +1015,7 @@ function map_bird_row_to_record(array $row): array {
         'breed' => column_value($row, ['breed'], $payload['breed'] ?? null),
         'locationId' => (string) (related_input_value($payload, ['locationId', 'coopId', 'location_id', 'coop_id']) ?? related_record_app_id_from_foreign_value('coops', (string) column_value($row, ['user_id', 'userId', 'account_id', 'owner_id'], ''), column_value($row, ['coop_id', 'coopId', 'location_id', 'locationId'], ''))),
         'status' => (string) column_value($row, ['status', 'appearance'], $payload['status'] ?? 'Healthy'),
-        'photoUrl' => column_value($row, ['photo_url', 'photoUrl', 'image_url', 'imageUrl'], $payload['photoUrl'] ?? null),
+        'photoUrl' => column_value($row, ['photo_url', 'photoUrl', 'photo_path', 'photoPath', 'image_url', 'imageUrl'], $payload['photoUrl'] ?? ($payload['photoPath'] ?? null)),
         'notes' => column_value($row, ['notes'], $payload['notes'] ?? null),
     ];
 }
@@ -1033,6 +1035,8 @@ function upsert_bird(string $userId, array $item): void {
         'appearance' => $item['status'] ?? null,
         'photo_url' => $item['photoUrl'] ?? null,
         'photoUrl' => $item['photoUrl'] ?? null,
+        'photo_path' => $item['photoUrl'] ?? null,
+        'photoPath' => $item['photoUrl'] ?? null,
         'image_url' => $item['photoUrl'] ?? null,
         'imageUrl' => $item['photoUrl'] ?? null,
         'notes' => $item['notes'] ?? null,
@@ -1249,6 +1253,7 @@ function map_incubation_row_to_record(array $row): array {
         'status' => (string) column_value($row, ['status'], $payload['status'] ?? 'Incubating'),
         'locationId' => (string) $locationId,
         'notes' => column_value($row, ['notes'], $payload['notes'] ?? null),
+        'temperature' => column_value($row, ['temperature', 'incubator_temperature', 'incubatorTemperature'], $payload['temperature'] ?? null),
         'hatchedCount' => column_value($row, ['hatched_count', 'hatchedCount'], $payload['hatchedCount'] ?? null),
         'perishedCount' => column_value($row, ['perished_count', 'perishedCount'], $payload['perishedCount'] ?? null),
         'chicks' => $chicks,
@@ -1279,6 +1284,9 @@ function upsert_incubation_batch(string $userId, array $item): void {
         'location_id' => foreign_identifier_value('incubation_batches', 'location_id', 'coops', $userId, $locationId),
         'locationId' => foreign_identifier_value('incubation_batches', 'locationId', 'coops', $userId, $locationId),
         'notes' => $item['notes'] ?? null,
+        'temperature' => $item['temperature'] ?? null,
+        'incubator_temperature' => $item['temperature'] ?? null,
+        'incubatorTemperature' => $item['temperature'] ?? null,
         'hatched_count' => $item['hatchedCount'] ?? null,
         'hatchedCount' => $item['hatchedCount'] ?? null,
         'perished_count' => $item['perishedCount'] ?? null,
