@@ -1,5 +1,17 @@
 @import "tailwindcss";
 
+:root {
+  --fab-safe-space: calc(11rem + env(safe-area-inset-bottom));
+}
+
 .egg-fab {
   border-radius: 50% 50% 46% 46% / 58% 58% 42% 42%;
+}
+
+.app-shell {
+  padding-bottom: var(--fab-safe-space);
+}
+
+.app-main {
+  padding-bottom: var(--fab-safe-space);
 }

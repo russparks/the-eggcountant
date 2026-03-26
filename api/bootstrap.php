@@ -1057,7 +1057,11 @@ function map_egg_log_row_to_record(array $row): array {
         'locationId' => (string) (related_input_value($payload, ['locationId', 'coopId', 'location_id', 'coop_id']) ?? related_record_app_id_from_foreign_value('coops', (string) column_value($row, ['user_id', 'userId', 'account_id', 'owner_id'], ''), column_value($row, ['coop_id', 'coopId', 'location_id', 'locationId'], ''))),
         'notes' => column_value($row, ['notes'], $payload['notes'] ?? null),
         'mode' => column_value($row, ['mode'], $payload['mode'] ?? null),
-        'coopTemperature' => column_value($row, ['coop_temperature', 'temperature', 'coopTemperature'], $payload['coopTemperature'] ?? null),
+        'coopTemperature' => column_value(
+            $row,
+            ['coop_temperature', 'coop_temp', 'coop_temp_c', 'temperature', 'temp', 'temp_c', 'coopTemperature'],
+            $payload['coopTemperature'] ?? ($payload['temperature'] ?? null)
+        ),
     ];
 }
 
@@ -1080,9 +1084,16 @@ function upsert_egg_log(string $userId, array $item): void {
         'notes' => $item['notes'] ?? null,
         'mode' => $item['mode'] ?? null,
         'coop_temperature' => $item['coopTemperature'] ?? null,
+        'coop_temp' => $item['coopTemperature'] ?? null,
+        'coop_temp_c' => $item['coopTemperature'] ?? null,
         'temperature' => $item['coopTemperature'] ?? null,
+        'temp' => $item['coopTemperature'] ?? null,
+        'temp_c' => $item['coopTemperature'] ?? null,
         'coopTemperature' => $item['coopTemperature'] ?? null,
-        payload_column('egg_logs') ?: '__skip_payload' => json_encode($item, JSON_UNESCAPED_SLASHES),
+        payload_column('egg_logs') ?: '__skip_payload' => json_encode([
+            ...$item,
+            'temperature' => $item['coopTemperature'] ?? ($item['temperature'] ?? null),
+        ], JSON_UNESCAPED_SLASHES),
     ], fn($value, $key) => $key !== '__skip_payload' && $value !== null, ARRAY_FILTER_USE_BOTH));
 }
 
@@ -1253,7 +1264,11 @@ function map_incubation_row_to_record(array $row): array {
         'status' => (string) column_value($row, ['status'], $payload['status'] ?? 'Incubating'),
         'locationId' => (string) $locationId,
         'notes' => column_value($row, ['notes'], $payload['notes'] ?? null),
-        'temperature' => column_value($row, ['temperature', 'incubator_temperature', 'incubatorTemperature'], $payload['temperature'] ?? null),
+        'temperature' => column_value(
+            $row,
+            ['temperature', 'incubator_temperature', 'incubator_temp', 'incubator_temp_c', 'temp', 'temp_c', 'incubatorTemperature'],
+            $payload['temperature'] ?? ($payload['incubatorTemperature'] ?? null)
+        ),
         'hatchedCount' => column_value($row, ['hatched_count', 'hatchedCount'], $payload['hatchedCount'] ?? null),
         'perishedCount' => column_value($row, ['perished_count', 'perishedCount'], $payload['perishedCount'] ?? null),
         'chicks' => $chicks,
@@ -1286,6 +1301,10 @@ function upsert_incubation_batch(string $userId, array $item): void {
         'notes' => $item['notes'] ?? null,
         'temperature' => $item['temperature'] ?? null,
         'incubator_temperature' => $item['temperature'] ?? null,
+        'incubator_temp' => $item['temperature'] ?? null,
+        'incubator_temp_c' => $item['temperature'] ?? null,
+        'temp' => $item['temperature'] ?? null,
+        'temp_c' => $item['temperature'] ?? null,
         'incubatorTemperature' => $item['temperature'] ?? null,
         'hatched_count' => $item['hatchedCount'] ?? null,
         'hatchedCount' => $item['hatchedCount'] ?? null,
@@ -1297,7 +1316,10 @@ function upsert_incubation_batch(string $userId, array $item): void {
         'photoUrl' => $item['photoUrl'] ?? null,
         'image_url' => $item['photoUrl'] ?? null,
         'imageUrl' => $item['photoUrl'] ?? null,
-        payload_column('incubation_batches') ?: '__skip_payload' => json_encode($item, JSON_UNESCAPED_SLASHES),
+        payload_column('incubation_batches') ?: '__skip_payload' => json_encode([
+            ...$item,
+            'incubatorTemperature' => $item['temperature'] ?? ($item['incubatorTemperature'] ?? null),
+        ], JSON_UNESCAPED_SLASHES),
     ], fn($value, $key) => $key !== '__skip_payload' && $value !== null, ARRAY_FILTER_USE_BOTH));
 }
 

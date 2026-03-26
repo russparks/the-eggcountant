@@ -307,12 +307,12 @@ export default function App() {
   const { locations, eggLogs, hens, feedLogs, medicationLogs, saleLogs, chickBatches } = state;
 
   return (
-    <div className="min-h-screen bg-[#F8F7FF] text-violet-900 font-sans pb-32 relative overflow-x-hidden egg-art">
+    <div className="min-h-screen bg-[#F8F7FF] text-violet-900 font-sans relative overflow-x-hidden egg-art app-shell">
       <BackgroundArt />
 
       <AppHeader />
 
-      <main className="max-w-md mx-auto p-4 space-y-4 relative z-10">
+      <main className="max-w-md mx-auto p-4 pb-44 space-y-4 relative z-10 app-main">
         {saveMessage && <div className="bg-emerald-50 text-emerald-700 px-4 py-3 rounded-2xl text-sm font-medium">{saveMessage}</div>}
         {authError && <div className="bg-rose-50 text-rose-700 px-4 py-3 rounded-2xl text-sm font-medium">{authError}</div>}
         {loadingData ? (
@@ -366,12 +366,12 @@ export default function App() {
       <button
         onClick={() => setLogSheetOpen(true)}
         aria-label="Log eggs"
-        className="fixed bottom-14 left-1/2 -translate-x-1/2 z-40 w-[88px] h-[112px] egg-fab bg-violet-600 text-white shadow-[0_18px_40px_rgba(124,58,237,0.35)] flex items-center justify-center border-4 border-[#F8F7FF]"
+        className="fixed bottom-[-22px] left-1/2 -translate-x-1/2 z-40 w-[88px] h-[112px] egg-fab bg-violet-600 text-white shadow-[0_18px_40px_rgba(124,58,237,0.35)] flex items-center justify-center border-4 border-[#F8F7FF]"
       >
         <Egg size={38} />
       </button>
 
-      <nav className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur border-t border-violet-100 px-4 pt-4 pb-3 z-20 shadow-[0_-4px_20px_rgba(124,58,237,0.05)]">
+      <nav className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur border-t border-violet-100 px-4 pt-4 pb-[calc(0.75rem+env(safe-area-inset-bottom))] z-20 shadow-[0_-4px_20px_rgba(124,58,237,0.05)]">
         <div className="max-w-md mx-auto grid grid-cols-5 items-end gap-1">
           <NavButton icon={<House size={26} />} label="Home" active={activeTab === 'dashboard'} onClick={() => setActiveTab('dashboard')} />
           <NavButton icon={<Bird size={26} />} label="Chicks" active={activeTab === 'chicks'} onClick={() => setActiveTab('chicks')} />
@@ -475,7 +475,6 @@ function Dashboard({
         <div className="flex justify-between items-end mb-4 gap-3">
           <div>
             <div className="flex items-center gap-2">
-              <span className="text-lg text-violet-500" aria-hidden="true">𝍩</span>
               <h3 className="text-lg font-serif italic">Rollin' Lay Count</h3>
             </div>
             <p className="text-[10px] uppercase tracking-[0.2em] text-violet-900/35 font-bold">Last 14 days</p>
