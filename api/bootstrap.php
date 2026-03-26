@@ -669,7 +669,28 @@ function collection_data(string $userId, string $collection): array {
 
     if (use_database()) {
         try {
-            return db_collection_data($userId, $collection);
+            $dbItems = db_collection_data($userId, $collection);
+            // Merge legacy JSON to restore fields (e.g. photoUrl) not stored in DB columns
+            $legacyItems = legacy_collection_data($userId, $collection);
+            $legacyById = [];
+            foreach ($legacyItems as $item) {
+                if (!empty($item['id'])) {
+                    $legacyById[$item['id']] = $item;
+                }
+            }
+            foreach ($dbItems as &$item) {
+                $id = $item['id'] ?? null;
+                if ($id && isset($legacyById[$id])) {
+                    // Fill in any null/missing fields from legacy record
+                    foreach ($legacyById[$id] as $key => $value) {
+                        if (($item[$key] ?? null) === null && $value !== null) {
+                            $item[$key] = $value;
+                        }
+                    }
+                }
+            }
+            unset($item);
+            return $dbItems;
         } catch (Throwable $exception) {
             if (!app_config('legacy_json_fallback', true)) {
                 fail('Failed to load data', 500, $exception);

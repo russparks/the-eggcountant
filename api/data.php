@@ -33,7 +33,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (use_database()) {
         try {
             db_upsert_collection_item($user['id'], $collection, $item);
-            respond(['item' => $item]);
         } catch (Throwable $exception) {
             if (!app_config('legacy_json_fallback', true)) {
                 fail('Failed to save record', 500, $exception);
@@ -41,6 +40,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
+    // Always write full record to legacy JSON — preserves fields (e.g. photoUrl)
+    // that may not have corresponding DB columns
     $items = legacy_collection_data($user['id'], $collection);
     $replaced = false;
     foreach ($items as $index => $existing) {
