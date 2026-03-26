@@ -222,10 +222,6 @@ export default function App() {
   }, [user]);
 
   useEffect(() => {
-    window.scrollTo(0, 0);
-  }, [activeTab]);
-
-  useEffect(() => {
     if (!saveMessage) return;
     const timer = window.setTimeout(() => setSaveMessage(''), 2200);
     return () => window.clearTimeout(timer);
