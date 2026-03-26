@@ -1593,9 +1593,19 @@ function ImagePicker({ value, onChange }: { value: string; onChange: (value: str
 
   const readFile = (file?: File | null) => {
     if (!file) return;
-    const reader = new FileReader();
-    reader.onloadend = () => onChange(String(reader.result || ''));
-    reader.readAsDataURL(file);
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      const MAX = 400;
+      const scale = Math.min(1, MAX / Math.max(img.width, img.height));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+      canvas.getContext('2d')!.drawImage(img, 0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(url);
+      onChange(canvas.toDataURL('image/jpeg', 0.75));
+    };
+    img.src = url;
   };
 
   return (
