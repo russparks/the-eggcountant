@@ -123,6 +123,17 @@ const getSaleLabel = (itemType?: SaleItemType, quantity?: number) => {
 };
 
 const NOTE_WORD_LIMIT = 100;
+
+// DB returns numeric columns as strings — coerce everything back to numbers
+const toNum = (v: unknown): number => { const n = Number(v); return isNaN(n) ? 0 : n; };
+const normaliseEggLog = (log: EggLog): EggLog => ({ ...log, count: toNum(log.count) });
+const normaliseHen = (hen: Hen): Hen => hen;
+const normaliseSaleLog = (log: SaleLog): SaleLog => ({ ...log, quantity: toNum(log.quantity), price: toNum(log.price) });
+const normaliseFeedLog = (log: FeedLog): FeedLog => ({ ...log, amount: toNum(log.amount), cost: log.cost != null ? toNum(log.cost) : undefined, weight: log.weight != null ? toNum(log.weight) : undefined });
+const normaliseMedicationLog = (log: MedicationLog): MedicationLog => log;
+const normaliseLocation = (loc: Location): Location => loc;
+const normaliseChickBatch = (batch: ChickBatch): ChickBatch => ({ ...batch, count: toNum(batch.count), hatchedCount: batch.hatchedCount != null ? toNum(batch.hatchedCount) : undefined, perishedCount: batch.perishedCount != null ? toNum(batch.perishedCount) : undefined });
+
 const countWords = (value: string) => value.trim() ? value.trim().split(/\s+/).length : 0;
 const normalizeOptionalNote = (value: string) => value.trim() || undefined;
 const truncateToWordLimit = (value: string, limit = NOTE_WORD_LIMIT) => {
@@ -185,7 +196,15 @@ export default function App() {
         ]);
 
         if (!cancelled) {
-          setState({ locations, eggLogs, hens, feedLogs, medicationLogs, saleLogs, chickBatches });
+          setState({
+            locations: locations.map(normaliseLocation),
+            eggLogs: eggLogs.map(normaliseEggLog),
+            hens: hens.map(normaliseHen),
+            feedLogs: feedLogs.map(normaliseFeedLog),
+            medicationLogs: medicationLogs.map(normaliseMedicationLog),
+            saleLogs: saleLogs.map(normaliseSaleLog),
+            chickBatches: chickBatches.map(normaliseChickBatch),
+          });
         }
       } catch (error) {
         if (!cancelled) {
