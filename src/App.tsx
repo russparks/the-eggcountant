@@ -366,7 +366,7 @@ export default function App() {
       <button
         onClick={() => setLogSheetOpen(true)}
         aria-label="Log eggs"
-        className="fixed bottom-[-6px] left-1/2 -translate-x-1/2 z-40 w-[88px] h-[112px] egg-fab bg-violet-600 text-white shadow-[0_18px_40px_rgba(124,58,237,0.35)] flex items-center justify-center border-4 border-[#F8F7FF]"
+        className="fixed bottom-[-22px] left-1/2 -translate-x-1/2 z-40 w-[88px] h-[112px] egg-fab bg-violet-600 text-white shadow-[0_18px_40px_rgba(124,58,237,0.35)] flex items-center justify-center border-4 border-[#F8F7FF]"
       >
         <Egg size={38} />
       </button>
