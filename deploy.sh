@@ -20,16 +20,22 @@ put api/login.php -o ${REMOTE}/api/login.php
 put api/logout.php -o ${REMOTE}/api/logout.php
 put api/register.php -o ${REMOTE}/api/register.php
 put api/session.php -o ${REMOTE}/api/session.php
+put api/upload.php -o ${REMOTE}/api/upload.php
 put .htaccess -o ${REMOTE}/.htaccess
+mkdir -p ${REMOTE}/uploads
+put uploads/.htaccess -o ${REMOTE}/uploads/.htaccess
 
 # 2. Fix permissions on everything uploaded
 chmod 755 ${REMOTE}
 chmod 755 ${REMOTE}/assets
 chmod 755 ${REMOTE}/api
+chmod 755 ${REMOTE}/uploads
 cd ${REMOTE}/assets
 glob chmod 644 *
 cd ${REMOTE}/api
 glob chmod 644 *
+cd ${REMOTE}/uploads
+chmod 644 .htaccess
 cd ${REMOTE}
 chmod 644 .htaccess
 chmod 644 favicon.png

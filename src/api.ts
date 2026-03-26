@@ -21,9 +21,10 @@ export type SessionUser = {
 const API_BASE = import.meta.env.DEV ? 'http://localhost:8000/api' : './api';
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const isFormData = typeof FormData !== 'undefined' && init?.body instanceof FormData;
   const response = await fetch(`${API_BASE}${path}`, {
     credentials: 'include',
-    headers: {
+    headers: isFormData ? (init?.headers || {}) : {
       'Content-Type': 'application/json',
       ...(init?.headers || {}),
     },
@@ -54,6 +55,18 @@ export const authApi = {
     method: 'POST',
     body: JSON.stringify({}),
   }),
+};
+
+export const uploadApi = {
+  image: async (file: Blob, filename = 'photo.jpg'): Promise<string> => {
+    const form = new FormData();
+    form.append('file', file, filename);
+    const data = await request<{ url: string }>('/upload.php', {
+      method: 'POST',
+      body: form,
+    });
+    return data.url;
+  },
 };
 
 export const dataApi = {

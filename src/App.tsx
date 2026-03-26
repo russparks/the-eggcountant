@@ -32,7 +32,7 @@ import {
   Wheat,
   X,
 } from 'lucide-react';
-import { authApi, dataApi, SessionUser } from './api';
+import { authApi, dataApi, SessionUser, uploadApi } from './api';
 import { CHICKEN_FACTS, CHICKEN_WIKI } from './constants';
 import { ChickBatch, EggLog, EggLogMode, FeedLog, Hen, HenAppearance, Location, MedicationLog, SaleItemType, SaleLog } from './types';
 import eggcountantLogo from '../media/eggcountant-logo.png';
@@ -1590,32 +1590,47 @@ function InlineSuccessSplash({ title, subtitle, icon }: { title: string; subtitl
 function ImagePicker({ value, onChange }: { value: string; onChange: (value: string) => void }) {
   const libraryRef = useRef<HTMLInputElement | null>(null);
   const cameraRef = useRef<HTMLInputElement | null>(null);
+  const [uploading, setUploading] = useState(false);
 
-  const readFile = (file?: File | null) => {
+  const readFile = async (file?: File | null) => {
     if (!file) return;
+    setUploading(true);
     const img = new Image();
-    const url = URL.createObjectURL(file);
-    img.onload = () => {
-      const MAX = 400;
-      const scale = Math.min(1, MAX / Math.max(img.width, img.height));
-      const canvas = document.createElement('canvas');
-      canvas.width = Math.round(img.width * scale);
-      canvas.height = Math.round(img.height * scale);
-      canvas.getContext('2d')!.drawImage(img, 0, 0, canvas.width, canvas.height);
-      URL.revokeObjectURL(url);
-      onChange(canvas.toDataURL('image/jpeg', 0.75));
+    const objectUrl = URL.createObjectURL(file);
+    img.onload = async () => {
+      try {
+        const MAX = 800;
+        const scale = Math.min(1, MAX / Math.max(img.width, img.height));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(img.width * scale);
+        canvas.height = Math.round(img.height * scale);
+        canvas.getContext('2d')!.drawImage(img, 0, 0, canvas.width, canvas.height);
+        const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.8));
+        if (!blob) throw new Error('Image conversion failed');
+        const uploadedUrl = await uploadApi.image(blob, 'photo.jpg');
+        onChange(uploadedUrl);
+      } catch (error) {
+        console.error(error);
+      } finally {
+        URL.revokeObjectURL(objectUrl);
+        setUploading(false);
+      }
     };
-    img.src = url;
+    img.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      setUploading(false);
+    };
+    img.src = objectUrl;
   };
 
   return (
     <div className="space-y-3">
       <div className="rounded-2xl border-2 border-dashed border-violet-200 bg-violet-50 p-4 flex items-center justify-center min-h-28">
-        {value ? <img src={value} alt="Preview" className="w-20 h-20 object-cover rounded-2xl" /> : <div className="text-center text-violet-400"><Camera size={22} className="mx-auto mb-2" /><span className="text-[10px] font-bold uppercase tracking-[0.2em]">No photo yet</span></div>}
+        {value ? <img src={value} alt="Preview" className="w-20 h-20 object-cover rounded-2xl" /> : <div className="text-center text-violet-400"><Camera size={22} className="mx-auto mb-2" /><span className="text-[10px] font-bold uppercase tracking-[0.2em]">{uploading ? 'Uploading…' : 'No photo yet'}</span></div>}
       </div>
       <div className="grid grid-cols-2 gap-2">
-        <button type="button" onClick={() => libraryRef.current?.click()} className="py-3 rounded-2xl bg-white border border-violet-100 text-violet-700 font-bold text-sm">Choose from library</button>
-        <button type="button" onClick={() => cameraRef.current?.click()} className="py-3 rounded-2xl bg-violet-600 text-white font-bold text-sm">Take photo</button>
+        <button type="button" disabled={uploading} onClick={() => libraryRef.current?.click()} className="py-3 rounded-2xl bg-white border border-violet-100 text-violet-700 font-bold text-sm disabled:opacity-60">Choose from library</button>
+        <button type="button" disabled={uploading} onClick={() => cameraRef.current?.click()} className="py-3 rounded-2xl bg-violet-600 text-white font-bold text-sm disabled:opacity-60">{uploading ? 'Uploading…' : 'Take photo'}</button>
       </div>
       <input ref={libraryRef} type="file" accept="image/*" className="hidden" onChange={(event) => readFile(event.target.files?.[0])} />
       <input ref={cameraRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={(event) => readFile(event.target.files?.[0])} />
