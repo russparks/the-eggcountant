@@ -1389,7 +1389,7 @@ function EditableChickBatchTile({
             <p className="text-xs text-violet-900/55">{daysLeft === 0 ? 'Hatch window' : `${daysLeft} day${daysLeft === 1 ? '' : 's'} left`}</p>
           </div>
         </div>
-        {(batch.hatchedCount || batch.perishedCount) ? <p className="text-xs text-violet-900/55">{batch.hatchedCount || 0} hatched • {batch.perishedCount || 0} perished</p> : null}
+        {(batch.hatchedCount || batch.perishedCount) ? <p className="text-xs text-violet-900/55">🐣 {batch.hatchedCount || 0} hatched • ☠️ {batch.perishedCount || 0} perished</p> : null}
         {batch.temperature !== undefined ? <p className="text-xs text-violet-900/55">Temperature: {batch.temperature}°C</p> : null}
         {batch.notes ? <p className="text-xs leading-relaxed text-violet-900/55">{batch.notes}</p> : null}
         {editing && (
