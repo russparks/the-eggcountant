@@ -556,9 +556,10 @@ function Dashboard({
               <div key={location.id} className="space-y-2">
                 <div className="flex justify-between items-end text-sm font-medium gap-3">
                   <span>{location.name}</span>
-                  <div className="text-right leading-none">
+                  <div className="flex items-center gap-2 text-right leading-none">
+                    <img src={singleEggIcon} alt="" className="w-5 h-5 object-contain" />
+                    <div className="text-xs font-bold text-violet-900/45">x</div>
                     <div className="text-lg font-serif italic font-bold text-violet-700">{eggs}</div>
-                    <div className="text-[10px] uppercase tracking-[0.2em] text-violet-900/35 font-bold">{eggCupLabel} egg cup</div>
                   </div>
                 </div>
                 <div className="h-2 bg-violet-50 rounded-full overflow-hidden">
@@ -1174,16 +1175,16 @@ function ChickenWiki() {
   const factLabel = CHICKEN_FACTS[factIndex].includes('?') ? 'Pun of the day' : 'Fact of the day';
   return (
     <div className="space-y-4">
-      <Card className="bg-violet-600 text-white border-violet-600">
+      <Card className="bg-violet-50 text-violet-950 border-violet-200">
         <div className="space-y-3">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <p className="text-[10px] uppercase tracking-[0.2em] opacity-70 font-bold">Pun / fact card</p>
-              <p className="text-sm opacity-80">{factLabel}</p>
+              <p className="text-[10px] uppercase tracking-[0.2em] text-violet-700/70 font-bold">Pun / fact card</p>
+              <p className="text-sm text-violet-900/70">{factLabel}</p>
             </div>
-            <button onClick={() => setFactIndex(Math.floor(Math.random() * CHICKEN_FACTS.length))} className="px-3 py-2 rounded-xl bg-white/15 text-xs font-bold shrink-0">Another one</button>
+            <button onClick={() => setFactIndex(Math.floor(Math.random() * CHICKEN_FACTS.length))} className="px-3 py-2 rounded-xl bg-violet-600 text-white text-xs font-bold shrink-0">Another one</button>
           </div>
-          <p className="text-lg font-serif italic leading-relaxed">“{CHICKEN_FACTS[factIndex]}”</p>
+          <p className="text-lg font-serif italic leading-relaxed text-violet-950">“{CHICKEN_FACTS[factIndex]}”</p>
         </div>
       </Card>
       <div className="grid gap-3">
