@@ -285,9 +285,9 @@ function db(): PDO {
     return $pdo;
 }
 
-function schema_columns(string $table): array {
+function schema_columns(string $table, bool $refresh = false): array {
     static $cache = [];
-    if (isset($cache[$table])) {
+    if (!$refresh && isset($cache[$table])) {
         return $cache[$table];
     }
 
@@ -311,6 +311,25 @@ function table_has_column(string $table, string $column): bool {
 function table_column(string $table, string $column): ?array {
     $columns = schema_columns($table);
     return $columns[$column] ?? null;
+}
+
+function refresh_schema_columns(string $table): array {
+    return schema_columns($table, true);
+}
+
+function ensure_table_column(string $table, string $column, string $definition): void {
+    if (table_has_column($table, $column)) {
+        return;
+    }
+
+    db()->exec(sprintf(
+        'ALTER TABLE `%s` ADD COLUMN `%s` %s',
+        str_replace('`', '``', $table),
+        str_replace('`', '``', $column),
+        $definition
+    ));
+
+    refresh_schema_columns($table);
 }
 
 function table_uses_auto_increment_id(string $table): bool {
@@ -1044,6 +1063,10 @@ function upsert_bird(string $userId, array $item): void {
     ], fn($value, $key) => $key !== '__skip_payload' && $value !== null, ARRAY_FILTER_USE_BOTH));
 }
 
+function ensure_egg_log_temperature_storage(): void {
+    ensure_table_column('egg_logs', 'coop_temperature', 'DECIMAL(5,2) NULL');
+}
+
 function fetch_egg_logs(string $userId): array {
     return array_map('map_egg_log_row_to_record', fetch_rows('egg_logs', $userId));
 }
@@ -1066,6 +1089,7 @@ function map_egg_log_row_to_record(array $row): array {
 }
 
 function upsert_egg_log(string $userId, array $item): void {
+    ensure_egg_log_temperature_storage();
     $locationId = related_input_value($item, ['locationId', 'coopId', 'location_id', 'coop_id']);
 
     persist_row('egg_logs', (string) $item['id'], $userId, array_filter([
@@ -1244,6 +1268,10 @@ function upsert_sale(string $userId, array $item): void {
     ], fn($value, $key) => $key !== '__skip_payload' && $value !== null, ARRAY_FILTER_USE_BOTH));
 }
 
+function ensure_incubation_batch_temperature_storage(): void {
+    ensure_table_column('incubation_batches', 'temperature', 'DECIMAL(5,2) NULL');
+}
+
 function fetch_incubation_batches(string $userId): array {
     return array_map('map_incubation_row_to_record', fetch_rows('incubation_batches', $userId));
 }
@@ -1277,6 +1305,7 @@ function map_incubation_row_to_record(array $row): array {
 }
 
 function upsert_incubation_batch(string $userId, array $item): void {
+    ensure_incubation_batch_temperature_storage();
     $locationId = related_input_value($item, ['locationId', 'coopId', 'location_id', 'coop_id']);
 
     persist_row('incubation_batches', (string) $item['id'], $userId, array_filter([
