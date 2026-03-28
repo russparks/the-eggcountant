@@ -12,6 +12,7 @@ export type EggLog = {
   date: string;
   count: number;
   locationId: string;
+  henId?: string;
   notes?: string;
   mode?: EggLogMode;
   coopTemperature?: number;
@@ -85,6 +86,7 @@ export type ChickBatch = {
   count: number;
   status: 'Incubating' | 'Hatched' | 'Failed';
   locationId: string;
+  henId?: string;
   notes?: string;
   temperature?: number;
   hatchedCount?: number;
